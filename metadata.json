@@ -1,0 +1,6 @@
+{
+  "name": "Centro Operativo de Programas de Salud Quilicura",
+  "description": "Centro Operativo de Gestión de Programas de Salud (PRAPS y Personas Mayores) para Quilicura. Vista Hoy, Dashboard Global, gestión de metas, presupuesto, compras, tareas, RRHH, ELEAM, EMPAM y Campaña de Invierno con alertas automáticas y gestión por excepción.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
