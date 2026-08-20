@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Centro Operativo de Programas de Salud Quilicura</title>
+    <meta name="description" content="Centro Operativo de Gestión de Programas de Salud (PRAPS y Personas Mayores) para Quilicura." />
+    <meta property="og:title" content="Centro Operativo de Programas de Salud Quilicura" />
+    <meta property="og:description" content="Centro Operativo de Gestión de Programas de Salud (PRAPS y Personas Mayores) para Quilicura." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function() {
+        try {
+          var nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+          var customFetch = nativeFetch;
+          var desc = Object.getOwnPropertyDescriptor(window, 'fetch') || 
+                     Object.getOwnPropertyDescriptor(Window.prototype, 'fetch') ||
+                     (window.__proto__ ? Object.getOwnPropertyDescriptor(window.__proto__, 'fetch') : null);
+          
+          if (!desc || !desc.set || !desc.writable) {
+            try {
+              Object.defineProperty(window, 'fetch', {
+                get: function() { return customFetch || nativeFetch; },
+                set: function(val) { customFetch = val; },
+                configurable: true,
+                enumerable: true
+              });
+            } catch (e1) {
+              try {
+                Object.defineProperty(Window.prototype, 'fetch', {
+                  get: function() { return customFetch || nativeFetch; },
+                  set: function(val) { customFetch = val; },
+                  configurable: true,
+                  enumerable: true
+                });
+              } catch (e2) {}
+            }
+          }
+        } catch (err) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
