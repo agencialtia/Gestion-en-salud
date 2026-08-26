@@ -18,6 +18,7 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
 
   const [selectedProgram, setSelectedProgram] = useState<ProgramId>(defaultProgramId || 'praps_cpu');
   const [componente, setComponente] = useState('');
+  const [identificador, setIdentificador] = useState('Indicador 1');
   const [indicador, setIndicador] = useState('');
   const [corte, setCorte] = useState<'1° corte' | '2° corte' | '3° corte'>('1° corte');
   const [objetivoEspecifico, setObjetivoEspecifico] = useState('');
@@ -25,11 +26,14 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
   // Numerador & Denominador
   const [numeradorDesc, setNumeradorDesc] = useState('');
   const [numeradorPorcentaje, setNumeradorPorcentaje] = useState('');
+  const [numeradorTipo, setNumeradorTipo] = useState<'%' | 'cantidad'>('%');
   const [denominadorDesc, setDenominadorDesc] = useState('');
   const [denominadorPorcentaje, setDenominadorPorcentaje] = useState('');
+  const [denominadorTipo, setDenominadorTipo] = useState<'%' | 'cantidad'>('%');
   
   // Peso relativo
   const [pesoRelativo, setPesoRelativo] = useState('');
+  const [pesoRelativoDesc, setPesoRelativoDesc] = useState('');
   
   // Medios de verificación
   const [medioVerifNumerador, setMedioVerifNumerador] = useState('');
@@ -38,10 +42,16 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
   // Metas anuales y resultado
   const [metaAnualTexto, setMetaAnualTexto] = useState('');
   const [metaAnualPorcentaje, setMetaAnualPorcentaje] = useState('100');
-  const [resultadoActualPorcentaje, setResultadoActualPorcentaje] = useState('0');
+  const [resultadoRespectoCorte, setResultadoRespectoCorte] = useState('0');
+  const [resultadoRespectoCorteTipo, setResultadoRespectoCorteTipo] = useState<'%' | 'cantidad'>('%');
   
   // Fecha de corte
   const [fechaCorte, setFechaCorte] = useState('2026-08-31');
+
+  // Real-time calculation of weighted indicator result
+  const pesoNum = parseFloat(pesoRelativo) || 0;
+  const corteNum = parseFloat(resultadoRespectoCorte) || 0;
+  const resultadoPonderadoNum = pesoNum > 0 ? Number(((corteNum * pesoNum) / 100).toFixed(2)) : corteNum;
 
   useEffect(() => {
     if (defaultProgramId) {
@@ -56,13 +66,13 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
     if (!indicador.trim()) return;
 
     const numAnnual = parseFloat(metaAnualPorcentaje) || 100;
-    const numResult = parseFloat(resultadoActualPorcentaje) || 0;
-    const programIndicators = indicators.filter((i) => i.programId === selectedProgram);
-    const generatedCode = `Indicador ${programIndicators.length + 1}`;
+    const numCorte = parseFloat(resultadoRespectoCorte) || 0;
+    const numPeso = parseFloat(pesoRelativo) || 0;
+    const finalPonderado = numPeso > 0 ? Number(((numCorte * numPeso) / 100).toFixed(2)) : numCorte;
 
     const cutData: IndicatorCutData = {
       target: numAnnual,
-      result: numResult,
+      result: finalPonderado,
       date: fechaCorte,
       source: medioVerifNumerador || 'Registro Clínico / REM',
       notes: objetivoEspecifico || undefined,
@@ -70,17 +80,23 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
 
     addIndicator({
       programId: selectedProgram,
-      code: generatedCode,
+      code: identificador.trim() || 'Indicador 1',
       name: indicador,
       description: objetivoEspecifico || indicador,
       componente: componente.trim() || undefined,
       objetivoEspecifico: objetivoEspecifico.trim() || undefined,
       corteSeleccionado: corte,
+      numeradorTipo: numeradorTipo,
       numeradorDescripcion: numeradorDesc.trim() || undefined,
       numeradorValor: numeradorPorcentaje ? parseFloat(numeradorPorcentaje) : undefined,
+      denominadorTipo: denominadorTipo,
       denominadorDescripcion: denominadorDesc.trim() || undefined,
       denominadorValor: denominadorPorcentaje ? parseFloat(denominadorPorcentaje) : undefined,
       pesoRelativo: pesoRelativo ? parseFloat(pesoRelativo) : undefined,
+      pesoRelativoDescripcion: pesoRelativoDesc.trim() || undefined,
+      resultadoRespectoCorte: numCorte,
+      resultadoRespectoCorteTipo: resultadoRespectoCorteTipo,
+      resultadoPonderado: finalPonderado,
       medioVerificacionNumerador: medioVerifNumerador.trim() || undefined,
       medioVerificacionDenominador: medioVerifDenominador.trim() || undefined,
       metaCumplimientoAnualTexto: metaAnualTexto.trim() || undefined,
@@ -88,7 +104,7 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
       periodicity: 'Mensual',
       annualTarget: numAnnual,
       periodTarget: numAnnual,
-      currentResult: numResult,
+      currentResult: finalPonderado,
       unit: '%',
       direction: 'higher_is_better',
       cutoffDate: fechaCorte,
@@ -107,14 +123,18 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
     setObjetivoEspecifico('');
     setNumeradorDesc('');
     setNumeradorPorcentaje('');
+    setNumeradorTipo('%');
     setDenominadorDesc('');
     setDenominadorPorcentaje('');
+    setDenominadorTipo('%');
     setPesoRelativo('');
+    setPesoRelativoDesc('');
     setMedioVerifNumerador('');
     setMedioVerifDenominador('');
     setMetaAnualTexto('');
     setMetaAnualPorcentaje('100');
-    setResultadoActualPorcentaje('0');
+    setResultadoRespectoCorte('0');
+    setResultadoRespectoCorteTipo('%');
     setFechaCorte('2026-08-31');
 
     onClose();
@@ -180,24 +200,44 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
             />
           </div>
 
-          {/* Indicador & Corte */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2">
+          {/* Identificador & Nombre del Indicador */}
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
+            <div className="sm:col-span-4">
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Indicador *
+                Identificador *
               </label>
-              <input
-                type="text"
+              <select
+                value={identificador}
+                onChange={(e) => setIdentificador(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-bold text-indigo-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+              >
+                {Array.from({ length: 10 }, (_, i) => `Indicador ${i + 1}`).map((idOpt) => (
+                  <option key={idOpt} value={idOpt}>
+                    {idOpt}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-8">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Nombre del Indicador *
+              </label>
+              <textarea
+                rows={2}
                 required
                 placeholder="ej. Cobertura de Ingresos a Cuidados Paliativos No Oncológicos"
                 value={indicador}
                 onChange={(e) => setIndicador(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
             </div>
+          </div>
+
+          {/* Corte Seleccionado & Fecha de Corte */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Corte
+                Corte Seleccionado
               </label>
               <select
                 value={corte}
@@ -208,6 +248,18 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
                 <option value="2° corte">2° corte</option>
                 <option value="3° corte">3° corte</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Fecha de Corte *
+              </label>
+              <input
+                type="date"
+                required
+                value={fechaCorte}
+                onChange={(e) => setFechaCorte(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
             </div>
           </div>
 
@@ -225,14 +277,14 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
             />
           </div>
 
-          {/* Numerador + % */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          {/* Numerador */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-start">
             <div className="sm:col-span-3">
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Numerador (Descripción)
               </label>
-              <input
-                type="text"
+              <textarea
+                rows={2}
                 placeholder="ej. N° de pacientes ingresados con plan de cuidados activo"
                 value={numeradorDesc}
                 onChange={(e) => setNumeradorDesc(e.target.value)}
@@ -240,31 +292,61 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Numerador (%)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Numerador
+                </label>
+                <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => setNumeradorTipo('%')}
+                    className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                      numeradorTipo === '%'
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Medir en Porcentaje (%)"
+                  >
+                    %
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNumeradorTipo('cantidad')}
+                    className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                      numeradorTipo === 'cantidad'
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Medir en Cantidad (N°)"
+                  >
+                    Cant.
+                  </button>
+                </div>
+              </div>
               <div className="relative">
                 <input
                   type="number"
                   step="any"
-                  placeholder="0"
+                  placeholder={numeradorTipo === 'cantidad' ? 'ej. 150' : '0'}
                   value={numeradorPorcentaje}
                   onChange={(e) => setNumeradorPorcentaje(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-12 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
-                <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
+                <span className="absolute right-2.5 top-2.5 text-[11px] font-bold text-slate-500 select-none">
+                  {numeradorTipo === 'cantidad' ? 'Cant.' : '%'}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Denominador + % */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          {/* Denominador */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-start">
             <div className="sm:col-span-3">
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Denominador (Descripción)
               </label>
-              <input
-                type="text"
+              <textarea
+                rows={2}
                 placeholder="ej. Total de pacientes derivados o inscritos en programa"
                 value={denominadorDesc}
                 onChange={(e) => setDenominadorDesc(e.target.value)}
@@ -272,19 +354,49 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Denominador (%)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Denominador
+                </label>
+                <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => setDenominadorTipo('%')}
+                    className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                      denominadorTipo === '%'
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Medir en Porcentaje (%)"
+                  >
+                    %
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDenominadorTipo('cantidad')}
+                    className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                      denominadorTipo === 'cantidad'
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Medir en Cantidad (N°)"
+                  >
+                    Cant.
+                  </button>
+                </div>
+              </div>
               <div className="relative">
                 <input
                   type="number"
                   step="any"
-                  placeholder="100"
+                  placeholder={denominadorTipo === 'cantidad' ? 'ej. 200' : '100'}
                   value={denominadorPorcentaje}
                   onChange={(e) => setDenominadorPorcentaje(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-12 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
-                <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
+                <span className="absolute right-2.5 top-2.5 text-[11px] font-bold text-slate-500 select-none">
+                  {denominadorTipo === 'cantidad' ? 'Cant.' : '%'}
+                </span>
               </div>
             </div>
           </div>
@@ -298,23 +410,23 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
               <input
                 type="number"
                 step="any"
-                placeholder="ej. 25"
+                placeholder="ej. 50"
                 value={pesoRelativo}
                 onChange={(e) => setPesoRelativo(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
               <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
             </div>
           </div>
 
           {/* Medios de verificación */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Medio de Verificación del Numerador
               </label>
-              <input
-                type="text"
+              <textarea
+                rows={2}
                 placeholder="ej. REM A05 sección C / Rayen APS"
                 value={medioVerifNumerador}
                 onChange={(e) => setMedioVerifNumerador(e.target.value)}
@@ -325,8 +437,8 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Medio de Verificación del Denominador
               </label>
-              <input
-                type="text"
+              <textarea
+                rows={2}
                 placeholder="ej. Población objetivo programada DISAM / DEIS"
                 value={medioVerifDenominador}
                 onChange={(e) => setMedioVerifDenominador(e.target.value)}
@@ -340,8 +452,8 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Meta Cumplimiento del Indicador Anual (Descripción)
             </label>
-            <input
-              type="text"
+            <textarea
+              rows={2}
               placeholder="ej. Lograr un 90% o más de cobertura en ingresos a CPU al 31 de diciembre"
               value={metaAnualTexto}
               onChange={(e) => setMetaAnualTexto(e.target.value)}
@@ -349,8 +461,8 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
             />
           </div>
 
-          {/* Metas en % y Resultado actual */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Metas en % y Resultado respecto a corte */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Meta Cumplimiento Anual en % *
@@ -363,41 +475,93 @@ export const CreateIndicatorModal: React.FC<CreateIndicatorModalProps> = ({
                   placeholder="90"
                   value={metaAnualPorcentaje}
                   onChange={(e) => setMetaAnualPorcentaje(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
                 <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
               </div>
             </div>
+
+            {/* Resultado respecto a corte con selector % y Cant. */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Resultado Actual en % *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Resultado respecto a corte *
+                </label>
+                <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => setResultadoRespectoCorteTipo('%')}
+                    className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                      resultadoRespectoCorteTipo === '%'
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Medir en Porcentaje (%)"
+                  >
+                    %
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setResultadoRespectoCorteTipo('cantidad')}
+                    className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                      resultadoRespectoCorteTipo === 'cantidad'
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Medir en Cantidad (N°)"
+                  >
+                    Cant.
+                  </button>
+                </div>
+              </div>
               <div className="relative">
                 <input
                   type="number"
                   step="any"
                   required
-                  placeholder="78.5"
-                  value={resultadoActualPorcentaje}
-                  onChange={(e) => setResultadoActualPorcentaje(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  placeholder={resultadoRespectoCorteTipo === 'cantidad' ? 'ej. 150' : '68.80'}
+                  value={resultadoRespectoCorte}
+                  onChange={(e) => setResultadoRespectoCorte(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-12 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
-                <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
+                <span className="absolute right-2.5 top-2.5 text-[11px] font-bold text-slate-500 select-none">
+                  {resultadoRespectoCorteTipo === 'cantidad' ? 'Cant.' : '%'}
+                </span>
               </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Fecha de Corte a Seleccionar *
+          </div>
+
+          {/* Resultado indicador según su peso relativo (Cálculo automático en tiempo real) */}
+          <div className="p-3.5 rounded-2xl border-2 border-indigo-200 bg-indigo-50/40 space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+              <label className="block">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold shadow-xs">
+                  Resultado {identificador || 'Indicador 1'} (según su peso relativo)
+                </span>
               </label>
-              <div className="relative">
-                <input
-                  type="date"
-                  required
-                  value={fechaCorte}
-                  onChange={(e) => setFechaCorte(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
+              <span className="text-[11px] font-medium text-indigo-700">
+                Ponderación automática en tiempo real
+              </span>
+            </div>
+
+            <div className="relative">
+              <input
+                type="number"
+                step="any"
+                readOnly
+                value={resultadoPonderadoNum}
+                className="w-full rounded-xl border-2 border-indigo-500 bg-white px-3.5 py-2.5 pr-7 text-xs font-black text-indigo-700 shadow-xs focus:outline-none cursor-default"
+              />
+              <span className="absolute right-3 top-2.5 text-xs font-bold text-indigo-600">%</span>
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-slate-600 bg-white/80 p-2 rounded-xl border border-indigo-100">
+              <span>
+                Fórmula: <strong>{corteNum}{resultadoRespectoCorteTipo === '%' ? '%' : ' cant.'}</strong> (corte) × <strong>{pesoNum}%</strong> (peso rel.) = <strong className="text-indigo-700 font-bold">{resultadoPonderadoNum}%</strong>
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
+                Resultado para cumplimiento
+              </span>
             </div>
           </div>
 

@@ -241,21 +241,32 @@ export const QuickCreateModal: React.FC<{
   const [hrContract, setHrContract] = useState<'Contrata' | 'Planta' | 'Honorarios'>('Contrata');
 
   // Indicator form state
+  const [indCode, setIndCode] = useState('Indicador 1');
   const [indComponente, setIndComponente] = useState('');
   const [indName, setIndName] = useState('');
   const [indCorte, setIndCorte] = useState<'1° corte' | '2° corte' | '3° corte'>('1° corte');
   const [indObjetivo, setIndObjetivo] = useState('');
   const [indNumDesc, setIndNumDesc] = useState('');
   const [indNumPorc, setIndNumPorc] = useState('');
+  const [indNumTipo, setIndNumTipo] = useState<'%' | 'cantidad'>('%');
   const [indDenDesc, setIndDenDesc] = useState('');
   const [indDenPorc, setIndDenPorc] = useState('');
+  const [indDenTipo, setIndDenTipo] = useState<'%' | 'cantidad'>('%');
   const [indPesoRelativo, setIndPesoRelativo] = useState('');
+  const [indPesoRelativoDesc, setIndPesoRelativoDesc] = useState('');
   const [indMedioNum, setIndMedioNum] = useState('');
   const [indMedioDen, setIndMedioDen] = useState('');
   const [indMetaAnualTexto, setIndMetaAnualTexto] = useState('');
   const [indMetaAnualPorc, setIndMetaAnualPorc] = useState('100');
+  const [indResultadoCorte, setIndResultadoCorte] = useState('0');
+  const [indResultadoCorteTipo, setIndResultadoCorteTipo] = useState<'%' | 'cantidad'>('%');
   const [indCurrent, setIndCurrent] = useState('0');
   const [indFechaCorte, setIndFechaCorte] = useState('2026-08-31');
+
+  // Real-time calculation of weighted indicator result
+  const quickIndPesoNum = parseFloat(indPesoRelativo) || 0;
+  const quickIndCorteNum = parseFloat(indResultadoCorte) || 0;
+  const quickIndResultadoPonderadoNum = quickIndPesoNum > 0 ? Number(((quickIndCorteNum * quickIndPesoNum) / 100).toFixed(2)) : quickIndCorteNum;
 
   // ELEAM form state
   const [eleamCode, setEleamCode] = useState(`ELEAM-QLC-2026-${Math.floor(Math.random() * 90 + 10)}`);
@@ -437,31 +448,37 @@ export const QuickCreateModal: React.FC<{
     } else if (activeTab === 'indicator') {
       if (!indName.trim()) return;
       const numAnnual = parseFloat(indMetaAnualPorc) || 100;
-      const numResult = parseFloat(indCurrent) || 0;
-      const programIndicators = indicators.filter((i) => i.programId === selectedProgram);
-      const generatedCode = `Indicador ${programIndicators.length + 1}`;
+      const numCorte = parseFloat(indResultadoCorte) || 0;
+      const numPeso = parseFloat(indPesoRelativo) || 0;
+      const finalPonderado = numPeso > 0 ? Number(((numCorte * numPeso) / 100).toFixed(2)) : numCorte;
 
       const cutData = {
         target: numAnnual,
-        result: numResult,
+        result: finalPonderado,
         date: indFechaCorte,
         source: indMedioNum || 'Registro Clínico / REM',
         notes: indObjetivo || undefined,
       };
 
       addIndicator({
-        code: generatedCode,
+        code: indCode.trim() || 'Indicador 1',
         name: indName,
         programId: selectedProgram,
         description: indObjetivo || indName,
         componente: indComponente.trim() || undefined,
         objetivoEspecifico: indObjetivo.trim() || undefined,
         corteSeleccionado: indCorte,
+        numeradorTipo: indNumTipo,
         numeradorDescripcion: indNumDesc.trim() || undefined,
         numeradorValor: indNumPorc ? parseFloat(indNumPorc) : undefined,
+        denominadorTipo: indDenTipo,
         denominadorDescripcion: indDenDesc.trim() || undefined,
         denominadorValor: indDenPorc ? parseFloat(indDenPorc) : undefined,
         pesoRelativo: indPesoRelativo ? parseFloat(indPesoRelativo) : undefined,
+        pesoRelativoDescripcion: indPesoRelativoDesc.trim() || undefined,
+        resultadoRespectoCorte: numCorte,
+        resultadoRespectoCorteTipo: indResultadoCorteTipo,
+        resultadoPonderado: finalPonderado,
         medioVerificacionNumerador: indMedioNum.trim() || undefined,
         medioVerificacionDenominador: indMedioDen.trim() || undefined,
         metaCumplimientoAnualTexto: indMetaAnualTexto.trim() || undefined,
@@ -469,7 +486,7 @@ export const QuickCreateModal: React.FC<{
         periodicity: 'Mensual',
         annualTarget: numAnnual,
         periodTarget: numAnnual,
-        currentResult: numResult,
+        currentResult: finalPonderado,
         unit: '%',
         direction: 'higher_is_better',
         cutoffDate: indFechaCorte,
@@ -1952,23 +1969,44 @@ export const QuickCreateModal: React.FC<{
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
+              {/* Identificador & Nombre del Indicador */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
+                <div className="sm:col-span-4">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Indicador *
+                    Identificador *
                   </label>
-                  <input
-                    type="text"
+                  <select
+                    value={indCode}
+                    onChange={(e) => setIndCode(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-bold text-indigo-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+                  >
+                    {Array.from({ length: 10 }, (_, i) => `Indicador ${i + 1}`).map((idOpt) => (
+                      <option key={idOpt} value={idOpt}>
+                        {idOpt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-8">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Nombre del Indicador *
+                  </label>
+                  <textarea
+                    rows={2}
                     required
                     placeholder="ej. Cobertura de atenciones de rehabilitación integral"
                     value={indName}
                     onChange={(e) => setIndName(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
+              </div>
+
+              {/* Corte Seleccionado & Fecha de Corte */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Corte
+                    Corte Seleccionado
                   </label>
                   <select
                     value={indCorte}
@@ -1979,6 +2017,18 @@ export const QuickCreateModal: React.FC<{
                     <option value="2° corte">2° corte</option>
                     <option value="3° corte">3° corte</option>
                   </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Fecha de Corte *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={indFechaCorte}
+                    onChange={(e) => setIndFechaCorte(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
                 </div>
               </div>
 
@@ -1995,13 +2045,14 @@ export const QuickCreateModal: React.FC<{
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              {/* Numerador */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-start">
                 <div className="sm:col-span-3">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Numerador (Descripción)
                   </label>
-                  <input
-                    type="text"
+                  <textarea
+                    rows={2}
                     placeholder="ej. N° de atenciones efectivas realizadas"
                     value={indNumDesc}
                     onChange={(e) => setIndNumDesc(e.target.value)}
@@ -2009,30 +2060,61 @@ export const QuickCreateModal: React.FC<{
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Numerador (%)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Numerador
+                    </label>
+                    <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => setIndNumTipo('%')}
+                        className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                          indNumTipo === '%'
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Medir en Porcentaje (%)"
+                      >
+                        %
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIndNumTipo('cantidad')}
+                        className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                          indNumTipo === 'cantidad'
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Medir en Cantidad (N°)"
+                      >
+                        Cant.
+                      </button>
+                    </div>
+                  </div>
                   <div className="relative">
                     <input
                       type="number"
                       step="any"
-                      placeholder="0"
+                      placeholder={indNumTipo === 'cantidad' ? 'ej. 150' : '0'}
                       value={indNumPorc}
                       onChange={(e) => setIndNumPorc(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-12 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
-                    <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
+                    <span className="absolute right-2.5 top-2.5 text-[11px] font-bold text-slate-500 select-none">
+                      {indNumTipo === 'cantidad' ? 'Cant.' : '%'}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              {/* Denominador */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-start">
                 <div className="sm:col-span-3">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Denominador (Descripción)
                   </label>
-                  <input
-                    type="text"
+                  <textarea
+                    rows={2}
                     placeholder="ej. Total de pacientes programados en red"
                     value={indDenDesc}
                     onChange={(e) => setIndDenDesc(e.target.value)}
@@ -2040,23 +2122,54 @@ export const QuickCreateModal: React.FC<{
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Denominador (%)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Denominador
+                    </label>
+                    <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => setIndDenTipo('%')}
+                        className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                          indDenTipo === '%'
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Medir en Porcentaje (%)"
+                      >
+                        %
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIndDenTipo('cantidad')}
+                        className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                          indDenTipo === 'cantidad'
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Medir en Cantidad (N°)"
+                      >
+                        Cant.
+                      </button>
+                    </div>
+                  </div>
                   <div className="relative">
                     <input
                       type="number"
                       step="any"
-                      placeholder="100"
+                      placeholder={indDenTipo === 'cantidad' ? 'ej. 200' : '100'}
                       value={indDenPorc}
                       onChange={(e) => setIndDenPorc(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-12 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
-                    <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
+                    <span className="absolute right-2.5 top-2.5 text-[11px] font-bold text-slate-500 select-none">
+                      {indDenTipo === 'cantidad' ? 'Cant.' : '%'}
+                    </span>
                   </div>
                 </div>
               </div>
 
+              {/* Peso Relativo en % */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Peso Relativo en %
@@ -2065,22 +2178,22 @@ export const QuickCreateModal: React.FC<{
                   <input
                     type="number"
                     step="any"
-                    placeholder="ej. 25"
+                    placeholder="ej. 50"
                     value={indPesoRelativo}
                     onChange={(e) => setIndPesoRelativo(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   />
                   <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Medio de Verificación del Numerador
                   </label>
-                  <input
-                    type="text"
+                  <textarea
+                    rows={2}
                     placeholder="ej. REM P01 Sala RBC"
                     value={indMedioNum}
                     onChange={(e) => setIndMedioNum(e.target.value)}
@@ -2091,8 +2204,8 @@ export const QuickCreateModal: React.FC<{
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Medio de Verificación del Denominador
                   </label>
-                  <input
-                    type="text"
+                  <textarea
+                    rows={2}
                     placeholder="ej. Planilla Interna DISAM"
                     value={indMedioDen}
                     onChange={(e) => setIndMedioDen(e.target.value)}
@@ -2105,8 +2218,8 @@ export const QuickCreateModal: React.FC<{
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Meta Cumplimiento del Indicador Anual (Descripción)
                 </label>
-                <input
-                  type="text"
+                <textarea
+                  rows={2}
                   placeholder="ej. Alcanzar el 85% de cobertura anual acumulada"
                   value={indMetaAnualTexto}
                   onChange={(e) => setIndMetaAnualTexto(e.target.value)}
@@ -2114,7 +2227,7 @@ export const QuickCreateModal: React.FC<{
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Meta Cumplimiento Anual en % *
@@ -2127,39 +2240,93 @@ export const QuickCreateModal: React.FC<{
                       placeholder="90"
                       value={indMetaAnualPorc}
                       onChange={(e) => setIndMetaAnualPorc(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
                     <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
                   </div>
                 </div>
+
+                {/* Resultado respecto a corte con selector % y Cant. */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Resultado Actual en % *
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Resultado respecto a corte *
+                    </label>
+                    <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => setIndResultadoCorteTipo('%')}
+                        className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                          indResultadoCorteTipo === '%'
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Medir en Porcentaje (%)"
+                      >
+                        %
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIndResultadoCorteTipo('cantidad')}
+                        className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                          indResultadoCorteTipo === 'cantidad'
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title="Medir en Cantidad (N°)"
+                      >
+                        Cant.
+                      </button>
+                    </div>
+                  </div>
                   <div className="relative">
                     <input
                       type="number"
                       step="any"
                       required
-                      placeholder="78.5"
-                      value={indCurrent}
-                      onChange={(e) => setIndCurrent(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      placeholder={indResultadoCorteTipo === 'cantidad' ? 'ej. 150' : '68.80'}
+                      value={indResultadoCorte}
+                      onChange={(e) => setIndResultadoCorte(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-12 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
-                    <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
+                    <span className="absolute right-2.5 top-2.5 text-[11px] font-bold text-slate-500 select-none">
+                      {indResultadoCorteTipo === 'cantidad' ? 'Cant.' : '%'}
+                    </span>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Fecha de Corte a Seleccionar *
+              </div>
+
+              {/* Resultado indicador según su peso relativo (Cálculo automático en tiempo real) */}
+              <div className="p-3.5 rounded-2xl border-2 border-indigo-200 bg-indigo-50/40 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                  <label className="block">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold shadow-xs">
+                      Resultado {indCode || 'Indicador 1'} (según su peso relativo)
+                    </span>
                   </label>
+                  <span className="text-[11px] font-medium text-indigo-700">
+                    Ponderación automática en tiempo real
+                  </span>
+                </div>
+
+                <div className="relative">
                   <input
-                    type="date"
-                    required
-                    value={indFechaCorte}
-                    onChange={(e) => setIndFechaCorte(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    type="number"
+                    step="any"
+                    readOnly
+                    value={quickIndResultadoPonderadoNum}
+                    className="w-full rounded-xl border-2 border-indigo-500 bg-white px-3.5 py-2.5 pr-7 text-xs font-black text-indigo-700 shadow-xs focus:outline-none cursor-default"
                   />
+                  <span className="absolute right-3 top-2.5 text-xs font-bold text-indigo-600">%</span>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-600 bg-white/80 p-2 rounded-xl border border-indigo-100">
+                  <span>
+                    Fórmula: <strong>{quickIndCorteNum}{indResultadoCorteTipo === '%' ? '%' : ' cant.'}</strong> (corte) × <strong>{quickIndPesoNum}%</strong> (peso rel.) = <strong className="text-indigo-700 font-bold">{quickIndResultadoPonderadoNum}%</strong>
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
+                    Resultado para cumplimiento
+                  </span>
                 </div>
               </div>
             </>

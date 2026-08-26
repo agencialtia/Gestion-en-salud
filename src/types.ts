@@ -205,6 +205,19 @@ export interface Indicator {
   weight?: any;
   goodThreshold?: any;
   warningThreshold?: any;
+  numeradorTipo?: '%' | 'cantidad' | string;
+  denominadorTipo?: '%' | 'cantidad' | string;
+  numeradorValor?: number;
+  denominadorValor?: number;
+  numeradorDescripcion?: string;
+  denominadorDescripcion?: string;
+  pesoRelativoDescripcion?: string;
+  pesoRelativo?: number;
+  resultadoRespectoCorte?: number;
+  resultadoRespectoCorteTipo?: '%' | 'cantidad' | string;
+  resultadoPonderado?: number;
+  medioVerificacionNumerador?: string;
+  medioVerificacionDenominador?: string;
   [key: string]: any;
 }
 

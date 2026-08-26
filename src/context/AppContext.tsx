@@ -772,17 +772,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => { localStorage.setItem(`${STORAGE_KEY}_attachments`, JSON.stringify(attachments)); }, [attachments]);
   useEffect(() => { localStorage.setItem(THRESHOLDS_KEY, JSON.stringify(thresholds)); }, [thresholds]);
 
-  // Toast Helper
-  const showToast = (message: string, type: 'success' | 'info' | 'warning' | 'error' = 'success') => {
-    const id = `toast_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+  // Toast Helper (disabled per user request)
+  const showToast = (_message: string, _type: 'success' | 'info' | 'warning' | 'error' = 'success') => {
+    // No-op: notification messages disabled
   };
 
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  const removeToast = (_id: string) => {
+    // No-op
   };
 
   const logAudit = (entity: string, entityId: string, action: AuditLog['action'], details: string) => {

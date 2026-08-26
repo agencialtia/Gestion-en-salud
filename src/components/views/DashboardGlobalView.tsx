@@ -544,11 +544,14 @@ export const DashboardGlobalView: React.FC<{
           <div>
             {worstProgram ? (
               <>
-                <div className="flex items-baseline justify-between gap-1">
-                  <span className="text-base font-bold text-slate-900 truncate max-w-[130px]" title={worstProgram.program.name}>
+                <div className="flex items-start justify-between gap-2">
+                  <span
+                    className="text-xs sm:text-sm font-bold text-slate-900 leading-snug flex-1 break-words"
+                    title={worstProgram.program.name}
+                  >
                     {worstProgram.program.shortName || worstProgram.program.name}
                   </span>
-                  <span className="text-2xl font-black text-rose-600 leading-none">
+                  <span className="text-2xl font-black text-rose-600 leading-none shrink-0">
                     {worstProgram.indicatorsCompliance.toFixed(0)}%
                   </span>
                 </div>
@@ -614,15 +617,15 @@ export const DashboardGlobalView: React.FC<{
         </div>
       </div>
 
-      {/* 5. Matriz Comparativa de Programas de Salud Quilicura con Columna de Tendencia */}
+      {/* 5. Matriz de Cumplimiento de Metas por Programa */}
       <div id="section-matriz-comparativa" className="rounded-2xl border border-slate-200 bg-white shadow-xs overflow-hidden">
         <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900 tracking-tight">
-              Matriz Comparativa de Programas de Salud Quilicura
+              Cumplimiento de Metas por Programa
             </h3>
             <p className="text-xs text-slate-500">
-              Consolidado de metas sanitarias, tendencia respecto al corte anterior, presupuesto y compromisos
+              Seguimiento y porcentaje de cumplimiento de metas sanitarias por programa de salud
             </p>
           </div>
 
@@ -680,89 +683,52 @@ export const DashboardGlobalView: React.FC<{
             <thead>
               <tr className="border-b border-slate-200 bg-slate-100/70 font-semibold text-slate-600">
                 <th className="p-3.5">Programa</th>
-                <th className="p-3.5 text-center">Semáforo</th>
-                <th className="p-3.5">Cumplimiento Metas</th>
-                <th className="p-3.5">Tendencia</th>
-                <th className="p-3.5">Presupuesto Vigente</th>
-                <th className="p-3.5">Ejecución (%)</th>
-                <th className="p-3.5">Disponible Real</th>
-                <th className="p-3.5 text-center">Vencidas</th>
-                <th className="p-3.5 text-center">Acción</th>
+                <th className="p-3.5 text-center w-28">Semáforo</th>
+                <th className="p-3.5">Cumplimiento de Metas</th>
+                <th className="p-3.5 text-center w-32">Acción</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredSummaries.map((s) => {
-                const trend = programTrends[s.program.id] || { type: 'none', label: 'Sin corte anterior' };
-
                 return (
                   <tr key={s.program.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="p-3.5 font-semibold text-slate-900">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.program.color }} />
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-3 h-3 rounded-full shrink-0 shadow-2xs" style={{ backgroundColor: s.program.color }} />
                         <div>
-                          <div className="font-bold">{s.program.name}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">{s.program.code}</div>
+                          <div className="font-bold text-sm text-slate-900">{s.program.name}</div>
+                          <div className="text-[11px] text-slate-400 font-mono">{s.program.code}</div>
                         </div>
                       </div>
                     </td>
                     <td className="p-3.5 text-center">
-                      <TrafficLightBadge status={s.status} size="sm" showLabel={false} />
+                      <TrafficLightBadge status={s.status} size="sm" showLabel={true} />
                     </td>
                     <td className="p-3.5">
-                      <div className="flex items-center gap-2 w-32">
-                        <ProgressBar value={s.indicatorsCompliance} size="sm" />
-                        <span className="font-bold text-slate-800">{s.indicatorsCompliance.toFixed(0)}%</span>
+                      <div className="flex items-center gap-3 max-w-lg">
+                        <div className="flex-1">
+                          <ProgressBar value={s.indicatorsCompliance} size="md" />
+                        </div>
+                        <span
+                          className={`text-base font-black shrink-0 min-w-[55px] text-right ${
+                            s.indicatorsCompliance >= 85
+                              ? 'text-emerald-600'
+                              : s.indicatorsCompliance >= 70
+                              ? 'text-amber-600'
+                              : 'text-rose-600'
+                          }`}
+                        >
+                          {s.indicatorsCompliance.toFixed(0)}%
+                        </span>
                       </div>
-                    </td>
-                    {/* Tendencia Column */}
-                    <td className="p-3.5 font-semibold whitespace-nowrap">
-                      {trend.type === 'up' ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-bold text-[11px]">
-                          <TrendingUp className="h-3 w-3 text-emerald-600" />
-                          {trend.label}
-                        </span>
-                      ) : trend.type === 'down' ? (
-                        <span className="inline-flex items-center gap-1 text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md font-bold text-[11px]">
-                          <TrendingDown className="h-3 w-3 text-rose-600" />
-                          {trend.label}
-                        </span>
-                      ) : trend.type === 'equal' ? (
-                        <span className="inline-flex items-center gap-1 text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md font-bold text-[11px]">
-                          <Minus className="h-3 w-3 text-slate-500" />
-                          {trend.label}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 text-[11px] italic">
-                          Sin corte anterior
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-3.5 font-medium text-slate-700">
-                      ${s.totalBudget.toLocaleString('es-CL')}
-                    </td>
-                    <td className="p-3.5">
-                      <span
-                        className={`font-bold ${
-                          s.financialExecutionRate < 45 ? 'text-rose-600' : 'text-slate-800'
-                        }`}
-                      >
-                        {s.financialExecutionRate.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="p-3.5 font-medium text-slate-700">
-                      ${s.availableBudget.toLocaleString('es-CL')}
-                    </td>
-                    <td className="p-3.5 text-center font-bold">
-                      <span className={s.overdueTasksCount > 0 ? 'text-rose-600 font-black' : 'text-slate-400'}>
-                        {s.overdueTasksCount}
-                      </span>
                     </td>
                     <td className="p-3.5 text-center">
                       <button
                         onClick={() => handleOpenProgram(s.program.id)}
-                        className="text-indigo-600 hover:text-indigo-800 font-bold hover:underline cursor-pointer text-xs"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold transition-all text-xs cursor-pointer active:scale-95"
                       >
-                        Abrir →
+                        <span>Ver detalle</span>
+                        <span aria-hidden="true">→</span>
                       </button>
                     </td>
                   </tr>
@@ -775,8 +741,6 @@ export const DashboardGlobalView: React.FC<{
         {/* Mobile View: Responsive Prioritized Cards */}
         <div className="block md:hidden divide-y divide-slate-100">
           {filteredSummaries.map((s) => {
-            const trend = programTrends[s.program.id] || { type: 'none', label: 'Sin corte anterior' };
-
             return (
               <div key={s.program.id} className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
@@ -789,42 +753,30 @@ export const DashboardGlobalView: React.FC<{
                   <TrafficLightBadge status={s.status} size="sm" showLabel={false} />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
-                  <div>
-                    <span className="text-slate-400 block font-medium">Metas</span>
-                    <span className="font-bold text-slate-800">{s.indicatorsCompliance.toFixed(0)}%</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block font-medium">Tendencia</span>
-                    {trend.type === 'up' ? (
-                      <span className="text-emerald-700 font-bold">{trend.label}</span>
-                    ) : trend.type === 'down' ? (
-                      <span className="text-rose-700 font-bold">{trend.label}</span>
-                    ) : (
-                      <span className="text-slate-500 font-medium">{trend.label}</span>
-                    )}
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block font-medium">Ejecución Fin.</span>
-                    <span className="font-bold text-slate-800">{s.financialExecutionRate.toFixed(1)}%</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block font-medium">Vencidas</span>
-                    <span className={s.overdueTasksCount > 0 ? 'text-rose-600 font-bold' : 'text-slate-600'}>
-                      {s.overdueTasksCount}
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500 font-medium">Cumplimiento de Metas</span>
+                    <span
+                      className={`font-black text-sm ${
+                        s.indicatorsCompliance >= 85
+                          ? 'text-emerald-600'
+                          : s.indicatorsCompliance >= 70
+                          ? 'text-amber-600'
+                          : 'text-rose-600'
+                      }`}
+                    >
+                      {s.indicatorsCompliance.toFixed(0)}%
                     </span>
                   </div>
+                  <ProgressBar value={s.indicatorsCompliance} size="sm" />
                 </div>
 
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-[10px] text-slate-500">
-                    Disp: ${s.availableBudget.toLocaleString('es-CL')}
-                  </span>
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-end">
                   <button
                     onClick={() => handleOpenProgram(s.program.id)}
                     className="text-indigo-600 hover:text-indigo-800 font-bold text-xs hover:underline cursor-pointer"
                   >
-                    Ingresar a programa →
+                    Ver detalle →
                   </button>
                 </div>
               </div>

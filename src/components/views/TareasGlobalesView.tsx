@@ -502,7 +502,7 @@ export const TareasGlobalesView: React.FC<{
             type="button"
             onClick={() => {
               setSelectedProgramId(null);
-              setActiveView('dashboard_global');
+              setActiveView('dashboard');
             }}
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-slate-900 active:scale-95 transition-all cursor-pointer"
             title="Volver al Dashboard"

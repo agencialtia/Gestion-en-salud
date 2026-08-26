@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useApp } from '../../context/AppContext';
 import {
   RESUMEN_2025_DATA,
   Indicador2025,
@@ -31,12 +32,14 @@ import {
   SmilePlus,
   Stethoscope,
   BookOpenCheck,
-  Info
+  Info,
+  ArrowLeft,
 } from 'lucide-react';
 import { ProgressBar } from '../common/UIComponents';
 import { formatDate } from '../../utils/dateUtils';
 
 export const Programas2025View: React.FC = () => {
+  const { setSelectedProgramId, setActiveView } = useApp();
   const [activeTab, setActiveTab] = useState<'resumen' | 'indicadores' | 'compras' | 'presupuesto' | 'hitos'>('resumen');
   const [selectedProgramFilter, setSelectedProgramFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -92,14 +95,6 @@ export const Programas2025View: React.FC = () => {
 
   return (
     <div id="view-programas-2025" className="space-y-6 animate-in fade-in duration-150 text-left">
-      {/* Toast popup */}
-      {toastNotification && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-semibold text-white shadow-xl border border-slate-700 animate-in slide-in-from-bottom-4">
-          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-          <span>{toastNotification}</span>
-        </div>
-      )}
-
       {/* Header Banner */}
       <div className="rounded-2xl border border-amber-500/20 bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/40 p-6 text-white shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -123,8 +118,20 @@ export const Programas2025View: React.FC = () => {
 
           <div className="flex items-center gap-2.5 shrink-0">
             <button
+              type="button"
+              onClick={() => {
+                setSelectedProgramId(null);
+                setActiveView('dashboard');
+              }}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/90 px-3.5 py-2.5 text-xs font-bold text-slate-200 shadow-sm hover:bg-slate-700 hover:text-white transition-all cursor-pointer active:scale-95"
+              title="Volver al Dashboard"
+            >
+              <ArrowLeft className="h-4 w-4 text-slate-300" />
+              <span>Volver</span>
+            </button>
+            <button
               onClick={handleExportSummary}
-              className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-md hover:bg-amber-400 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-md hover:bg-amber-400 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
             >
               <Printer className="h-4 w-4" />
               <span>Imprimir / Exportar Cierre 2025</span>

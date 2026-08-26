@@ -30,6 +30,7 @@ import {
   Eye,
   Paperclip,
   Share2,
+  ArrowLeft,
 } from 'lucide-react';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 
@@ -53,6 +54,8 @@ export const DocumentosView: React.FC<DocumentosViewProps> = ({
     addDocumentCategory,
     exportTableCSV,
     showToast,
+    setSelectedProgramId,
+    setActiveView,
   } = useApp();
 
   // Search & Filters State
@@ -468,6 +471,22 @@ export const DocumentosView: React.FC<DocumentosViewProps> = ({
               <option value="vencido">🔴 Vencidos ({countVencido})</option>
               <option value="historico">⚪ Histórico</option>
             </select>
+
+            {/* Volver Button (when viewing global docs) */}
+            {!scopedProgramId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedProgramId(null);
+                  setActiveView('dashboard');
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-all cursor-pointer border border-slate-300 shadow-2xs active:scale-95 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+                title="Volver al Dashboard"
+              >
+                <ArrowLeft className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+                <span>Volver</span>
+              </button>
+            )}
 
             {/* Export CSV Button */}
             <button

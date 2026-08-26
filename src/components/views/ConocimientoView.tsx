@@ -49,6 +49,7 @@ import {
   Archive,
   RotateCcw,
   SlidersHorizontal,
+  ArrowLeft,
 } from 'lucide-react';
 
 interface ConocimientoViewProps {
@@ -76,6 +77,8 @@ export const ConocimientoView: React.FC<ConocimientoViewProps> = ({
     addKnowledgeCategory,
     addKnowledgeSource,
     showToast,
+    setSelectedProgramId,
+    setActiveView,
   } = useApp();
 
   const todayStr = '2026-08-15';
@@ -390,6 +393,18 @@ export const ConocimientoView: React.FC<ConocimientoViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedProgramId(null);
+                  setActiveView('dashboard');
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-bold transition-all active:scale-95 cursor-pointer backdrop-blur-xs"
+                title="Volver al Dashboard"
+              >
+                <ArrowLeft className="h-4 w-4 text-indigo-200" />
+                <span>Volver</span>
+              </button>
               <button
                 type="button"
                 onClick={handleOpenCreate}

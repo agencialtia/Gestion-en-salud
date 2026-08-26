@@ -151,7 +151,7 @@ export const Layout: React.FC = () => {
         {/* Dynamic View Body */}
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-7xl">
-            {(activeView === 'dashboard' || activeView === 'hoy') && (
+            {(activeView === 'dashboard' || activeView === 'hoy' || activeView === 'dashboard_global') && (
               <DashboardGlobalView
                 onOpenEntity={handleOpenEntity}
                 onOpenQuickCreate={handleOpenQuickCreate}

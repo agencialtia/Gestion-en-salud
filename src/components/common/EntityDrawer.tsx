@@ -221,16 +221,26 @@ export const EntityDrawer: React.FC<{
   const [indCorte, setIndCorte] = useState<'1° corte' | '2° corte' | '3° corte'>('1° corte');
   const [indNumDesc, setIndNumDesc] = useState('');
   const [indNumPorc, setIndNumPorc] = useState('');
+  const [indNumTipo, setIndNumTipo] = useState<'%' | 'cantidad'>('%');
   const [indDenDesc, setIndDenDesc] = useState('');
   const [indDenPorc, setIndDenPorc] = useState('');
+  const [indDenTipo, setIndDenTipo] = useState<'%' | 'cantidad'>('%');
   const [indPesoRelativo, setIndPesoRelativo] = useState('');
+  const [indPesoRelativoDesc, setIndPesoRelativoDesc] = useState('');
   const [indMedioNum, setIndMedioNum] = useState('');
   const [indMedioDen, setIndMedioDen] = useState('');
   const [indMetaAnualTexto, setIndMetaAnualTexto] = useState('');
   const [indMetaAnualPorc, setIndMetaAnualPorc] = useState('');
+  const [indResultadoCorte, setIndResultadoCorte] = useState('');
+  const [indResultadoCorteTipo, setIndResultadoCorteTipo] = useState<'%' | 'cantidad'>('%');
   const [indCurrent, setIndCurrent] = useState('');
   const [indFechaCorte, setIndFechaCorte] = useState('2026-08-15');
   const [indSavedSuccess, setIndSavedSuccess] = useState(false);
+
+  // Real-time calculation of weighted indicator result
+  const indPesoNum = parseFloat(indPesoRelativo) || 0;
+  const indCorteNum = parseFloat(indResultadoCorte) || 0;
+  const indResultadoPonderadoNum = indPesoNum > 0 ? Number(((indCorteNum * indPesoNum) / 100).toFixed(2)) : indCorteNum;
 
   // Meeting Interactive Edit States
   const [newAgrText, setNewAgrText] = useState('');
@@ -589,9 +599,12 @@ export const EntityDrawer: React.FC<{
       setIndCorte((indicator.corteSeleccionado as any) || '1° corte');
       setIndNumDesc(indicator.numeradorDescripcion || '');
       setIndNumPorc(indicator.numeradorValor !== undefined ? String(indicator.numeradorValor) : '');
+      setIndNumTipo((indicator.numeradorTipo as any) || '%');
       setIndDenDesc(indicator.denominadorDescripcion || '');
       setIndDenPorc(indicator.denominadorValor !== undefined ? String(indicator.denominadorValor) : '');
+      setIndDenTipo((indicator.denominadorTipo as any) || '%');
       setIndPesoRelativo(indicator.pesoRelativo !== undefined ? String(indicator.pesoRelativo) : '');
+      setIndPesoRelativoDesc(indicator.pesoRelativoDescripcion || '');
       setIndMedioNum(indicator.medioVerificacionNumerador || '');
       setIndMedioDen(indicator.medioVerificacionDenominador || '');
       setIndMetaAnualTexto(indicator.metaCumplimientoAnualTexto || '');
@@ -600,6 +613,12 @@ export const EntityDrawer: React.FC<{
           ? String(indicator.metaCumplimientoAnualPorcentaje)
           : String(indicator.annualTarget || 100)
       );
+      setIndResultadoCorte(
+        indicator.resultadoRespectoCorte !== undefined
+          ? String(indicator.resultadoRespectoCorte)
+          : String(indicator.currentResult ?? 0)
+      );
+      setIndResultadoCorteTipo((indicator.resultadoRespectoCorteTipo as any) || '%');
       setIndCurrent(String(indicator.currentResult ?? 0));
       setIndFechaCorte(indicator.cutoffDate || '2026-08-15');
       setIndSavedSuccess(false);
@@ -660,11 +679,13 @@ export const EntityDrawer: React.FC<{
   const handleSaveIndicator = () => {
     if (!indicator) return;
     const numAnnual = parseFloat(indMetaAnualPorc) || indicator.annualTarget;
-    const numCurrent = parseFloat(indCurrent) || indicator.currentResult;
+    const numCorte = parseFloat(indResultadoCorte) || 0;
+    const numPeso = parseFloat(indPesoRelativo) || 0;
+    const finalPonderado = numPeso > 0 ? Number(((numCorte * numPeso) / 100).toFixed(2)) : numCorte;
 
     const cutData = {
       target: numAnnual,
-      result: numCurrent,
+      result: finalPonderado,
       date: indFechaCorte,
       source: indMedioNum || indicator.source,
       notes: indObjetivo || undefined,
@@ -677,18 +698,24 @@ export const EntityDrawer: React.FC<{
       componente: indComponente.trim() || undefined,
       objetivoEspecifico: indObjetivo.trim() || undefined,
       corteSeleccionado: indCorte,
+      numeradorTipo: indNumTipo,
       numeradorDescripcion: indNumDesc.trim() || undefined,
       numeradorValor: indNumPorc ? parseFloat(indNumPorc) : undefined,
+      denominadorTipo: indDenTipo,
       denominadorDescripcion: indDenDesc.trim() || undefined,
       denominadorValor: indDenPorc ? parseFloat(indDenPorc) : undefined,
       pesoRelativo: indPesoRelativo ? parseFloat(indPesoRelativo) : undefined,
+      pesoRelativoDescripcion: indPesoRelativoDesc.trim() || undefined,
+      resultadoRespectoCorte: numCorte,
+      resultadoRespectoCorteTipo: indResultadoCorteTipo,
+      resultadoPonderado: finalPonderado,
       medioVerificacionNumerador: indMedioNum.trim() || undefined,
       medioVerificacionDenominador: indMedioDen.trim() || undefined,
       metaCumplimientoAnualTexto: indMetaAnualTexto.trim() || undefined,
       metaCumplimientoAnualPorcentaje: numAnnual,
       annualTarget: numAnnual,
       periodTarget: numAnnual,
-      currentResult: numCurrent,
+      currentResult: finalPonderado,
       cutoffDate: indFechaCorte,
       source: indMedioNum || indicator.source,
       corte1: indCorte === '1° corte' ? cutData : indicator.corte1,
@@ -696,9 +723,8 @@ export const EntityDrawer: React.FC<{
       corte3: indCorte === '3° corte' ? cutData : indicator.corte3,
     });
 
-    setIndSavedSuccess(true);
     showToast('Indicador guardado exitosamente', 'success');
-    setTimeout(() => setIndSavedSuccess(false), 3000);
+    onClose();
   };
 
   // ==========================================
@@ -738,24 +764,15 @@ export const EntityDrawer: React.FC<{
               <button
                 type="button"
                 onClick={handleSaveIndicator}
-                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all min-h-[40px]"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all min-h-[40px] cursor-pointer"
               >
-                {indSavedSuccess ? (
-                  <>
-                    <Check className="h-4 w-4 text-emerald-300" />
-                    <span>¡Guardado!</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4" />
-                    <span>Guardar Cambios</span>
-                  </>
-                )}
+                <Save className="h-4 w-4" />
+                <span>Guardar Cambios</span>
               </button>
               <button
                 type="button"
                 onClick={() => onDeleteRequest('indicator', indicator.id)}
-                className="rounded-xl border border-rose-200 bg-rose-50/50 p-2 text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center"
+                className="rounded-xl border border-rose-200 bg-rose-50/50 p-2 text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
                 title="Eliminar indicador"
                 aria-label="Eliminar"
               >
@@ -764,7 +781,7 @@ export const EntityDrawer: React.FC<{
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-xl border border-slate-200 bg-white p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center"
+                className="rounded-xl border border-slate-200 bg-white p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
                 title="Cerrar ventana"
                 aria-label="Cerrar"
               >
@@ -801,33 +818,44 @@ export const EntityDrawer: React.FC<{
                     />
                   </div>
 
-                  {/* Identificador, Indicador & Corte */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                    <div className="sm:col-span-3">
+                  {/* Identificador & Nombre del Indicador */}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
+                    <div className="sm:col-span-4">
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
                         Identificador *
                       </label>
-                      <input
-                        type="text"
-                        placeholder="ej. Indicador 1"
+                      <select
                         value={indCode}
                         onChange={(e) => setIndCode(e.target.value)}
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-bold text-indigo-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                      />
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-bold text-indigo-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+                      >
+                        {Array.from({ length: 10 }, (_, i) => `Indicador ${i + 1}`).map((idOpt) => (
+                          <option key={idOpt} value={idOpt}>
+                            {idOpt}
+                          </option>
+                        ))}
+                        {indCode && !Array.from({ length: 10 }, (_, i) => `Indicador ${i + 1}`).includes(indCode) && (
+                          <option value={indCode}>{indCode}</option>
+                        )}
+                      </select>
                     </div>
-                    <div className="sm:col-span-6">
+                    <div className="sm:col-span-8">
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
                         Nombre del Indicador *
                       </label>
-                      <input
-                        type="text"
+                      <textarea
+                        rows={2}
                         placeholder="ej. Cobertura de atenciones de rehabilitación integral"
                         value={indName}
                         onChange={(e) => setIndName(e.target.value)}
                         className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       />
                     </div>
-                    <div className="sm:col-span-3">
+                  </div>
+
+                  {/* Corte Seleccionado & Fecha de Corte */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                    <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
                         Corte Seleccionado
                       </label>
@@ -840,6 +868,17 @@ export const EntityDrawer: React.FC<{
                         <option value="2° corte">2° corte</option>
                         <option value="3° corte">3° corte</option>
                       </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Fecha de Corte *
+                      </label>
+                      <input
+                        type="date"
+                        value={indFechaCorte}
+                        onChange={(e) => setIndFechaCorte(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
                     </div>
                   </div>
 
@@ -858,13 +897,13 @@ export const EntityDrawer: React.FC<{
                   </div>
 
                   {/* Numerador */}
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-start">
                     <div className="sm:col-span-3">
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
                         Numerador (Descripción)
                       </label>
-                      <input
-                        type="text"
+                      <textarea
+                        rows={2}
                         placeholder="ej. N° de atenciones efectivas realizadas"
                         value={indNumDesc}
                         onChange={(e) => setIndNumDesc(e.target.value)}
@@ -872,31 +911,61 @@ export const EntityDrawer: React.FC<{
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Numerador (%)
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-semibold text-slate-700">
+                          Numerador
+                        </label>
+                        <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setIndNumTipo('%')}
+                            className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                              indNumTipo === '%'
+                                ? 'bg-indigo-600 text-white shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                            title="Medir en Porcentaje (%)"
+                          >
+                            %
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIndNumTipo('cantidad')}
+                            className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                              indNumTipo === 'cantidad'
+                                ? 'bg-indigo-600 text-white shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                            title="Medir en Cantidad (N°)"
+                          >
+                            Cant.
+                          </button>
+                        </div>
+                      </div>
                       <div className="relative">
                         <input
                           type="number"
                           step="any"
-                          placeholder="0"
+                          placeholder={indNumTipo === 'cantidad' ? 'ej. 150' : '0'}
                           value={indNumPorc}
                           onChange={(e) => setIndNumPorc(e.target.value)}
-                          className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-12 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         />
-                        <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
+                        <span className="absolute right-2.5 top-2.5 text-[11px] font-bold text-slate-500 select-none">
+                          {indNumTipo === 'cantidad' ? 'Cant.' : '%'}
+                        </span>
                       </div>
                     </div>
                   </div>
 
                   {/* Denominador */}
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-start">
                     <div className="sm:col-span-3">
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
                         Denominador (Descripción)
                       </label>
-                      <input
-                        type="text"
+                      <textarea
+                        rows={2}
                         placeholder="ej. Total de pacientes programados en red"
                         value={indDenDesc}
                         onChange={(e) => setIndDenDesc(e.target.value)}
@@ -904,49 +973,79 @@ export const EntityDrawer: React.FC<{
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Denominador (%)
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-semibold text-slate-700">
+                          Denominador
+                        </label>
+                        <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setIndDenTipo('%')}
+                            className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                              indDenTipo === '%'
+                                ? 'bg-indigo-600 text-white shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                            title="Medir en Porcentaje (%)"
+                          >
+                            %
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIndDenTipo('cantidad')}
+                            className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                              indDenTipo === 'cantidad'
+                                ? 'bg-indigo-600 text-white shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                            title="Medir en Cantidad (N°)"
+                          >
+                            Cant.
+                          </button>
+                        </div>
+                      </div>
                       <div className="relative">
                         <input
                           type="number"
                           step="any"
-                          placeholder="100"
+                          placeholder={indDenTipo === 'cantidad' ? 'ej. 200' : '100'}
                           value={indDenPorc}
                           onChange={(e) => setIndDenPorc(e.target.value)}
-                          className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-12 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         />
-                        <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
+                        <span className="absolute right-2.5 top-2.5 text-[11px] font-bold text-slate-500 select-none">
+                          {indDenTipo === 'cantidad' ? 'Cant.' : '%'}
+                        </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Peso Relativo */}
+                  {/* Peso Relativo en % */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Peso Relativo en %
                     </label>
-                    <div className="relative max-w-full sm:max-w-xs">
+                    <div className="relative max-w-xs">
                       <input
                         type="number"
                         step="any"
-                        placeholder="ej. 25"
+                        placeholder="ej. 50"
                         value={indPesoRelativo}
                         onChange={(e) => setIndPesoRelativo(e.target.value)}
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       />
                       <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
                     </div>
                   </div>
 
                   {/* Medios de Verificación */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
                         Medio de Verificación del Numerador
                       </label>
-                      <input
-                        type="text"
+                      <textarea
+                        rows={2}
                         placeholder="ej. REM P01 Sala RBC"
                         value={indMedioNum}
                         onChange={(e) => setIndMedioNum(e.target.value)}
@@ -957,8 +1056,8 @@ export const EntityDrawer: React.FC<{
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
                         Medio de Verificación del Denominador
                       </label>
-                      <input
-                        type="text"
+                      <textarea
+                        rows={2}
                         placeholder="ej. Planilla Interna DISAM"
                         value={indMedioDen}
                         onChange={(e) => setIndMedioDen(e.target.value)}
@@ -972,8 +1071,8 @@ export const EntityDrawer: React.FC<{
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Meta Cumplimiento del Indicador Anual (Descripción)
                     </label>
-                    <input
-                      type="text"
+                    <textarea
+                      rows={2}
                       placeholder="ej. Alcanzar el 85% de cobertura anual acumulada"
                       value={indMetaAnualTexto}
                       onChange={(e) => setIndMetaAnualTexto(e.target.value)}
@@ -981,8 +1080,8 @@ export const EntityDrawer: React.FC<{
                     />
                   </div>
 
-                  {/* Metas y Resultados en % */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Metas y Resultados respecto a corte */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
                         Meta Anual en % *
@@ -999,32 +1098,88 @@ export const EntityDrawer: React.FC<{
                         <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
                       </div>
                     </div>
+
+                    {/* Resultado respecto a corte con selector % y Cant. */}
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Resultado Actual en % *
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-semibold text-slate-700">
+                          Resultado respecto a corte *
+                        </label>
+                        <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setIndResultadoCorteTipo('%')}
+                            className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                              indResultadoCorteTipo === '%'
+                                ? 'bg-indigo-600 text-white shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                            title="Medir en Porcentaje (%)"
+                          >
+                            %
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIndResultadoCorteTipo('cantidad')}
+                            className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                              indResultadoCorteTipo === 'cantidad'
+                                ? 'bg-indigo-600 text-white shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                            title="Medir en Cantidad (N°)"
+                          >
+                            Cant.
+                          </button>
+                        </div>
+                      </div>
                       <div className="relative">
                         <input
                           type="number"
                           step="any"
                           required
-                          value={indCurrent}
-                          onChange={(e) => setIndCurrent(e.target.value)}
-                          className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-7 text-xs font-bold text-indigo-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          placeholder={indResultadoCorteTipo === 'cantidad' ? 'ej. 150' : '68.80'}
+                          value={indResultadoCorte}
+                          onChange={(e) => setIndResultadoCorte(e.target.value)}
+                          className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-12 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         />
-                        <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
+                        <span className="absolute right-2.5 top-2.5 text-[11px] font-bold text-slate-500 select-none">
+                          {indResultadoCorteTipo === 'cantidad' ? 'Cant.' : '%'}
+                        </span>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Fecha de Corte *
+                  </div>
+
+                  {/* Resultado indicador según su peso relativo (Cálculo automático en tiempo real) */}
+                  <div className="p-3.5 rounded-2xl border-2 border-indigo-200 bg-indigo-50/40 space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                      <label className="block">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-bold shadow-xs">
+                          Resultado {indCode || 'Indicador 1'} (según su peso relativo)
+                        </span>
                       </label>
+                      <span className="text-[11px] font-medium text-indigo-700">
+                        Ponderación automática en tiempo real
+                      </span>
+                    </div>
+
+                    <div className="relative">
                       <input
-                        type="date"
-                        value={indFechaCorte}
-                        onChange={(e) => setIndFechaCorte(e.target.value)}
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        type="number"
+                        step="any"
+                        readOnly
+                        value={indResultadoPonderadoNum}
+                        className="w-full rounded-xl border-2 border-indigo-500 bg-white px-3.5 py-2.5 pr-7 text-xs font-black text-indigo-700 shadow-xs focus:outline-none cursor-default"
                       />
+                      <span className="absolute right-3 top-2.5 text-xs font-bold text-indigo-600">%</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-600 bg-white/80 p-2 rounded-xl border border-indigo-100">
+                      <span>
+                        Fórmula: <strong>{indCorteNum}{indResultadoCorteTipo === '%' ? '%' : ' cant.'}</strong> (corte) × <strong>{indPesoNum}%</strong> (peso rel.) = <strong className="text-indigo-700 font-bold">{indResultadoPonderadoNum}%</strong>
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
+                        Resultado para cumplimiento
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1078,85 +1233,7 @@ export const EntityDrawer: React.FC<{
                   </div>
                 </div>
 
-                {/* Record New Measurement */}
-                <div className="p-4 bg-indigo-50/60 border border-indigo-100 rounded-2xl space-y-3">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900">
-                    <TrendingUp className="h-4 w-4 text-indigo-600" />
-                    <span>Registrar Nuevo Corte / Medición</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[10px] font-semibold text-slate-600 block mb-1">Resultado Numérico (%)</label>
-                      <input
-                        type="number"
-                        step="any"
-                        placeholder="ej. 85"
-                        value={measurementValue}
-                        onChange={(e) => setMeasurementValue(e.target.value)}
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-semibold text-slate-600 block mb-1">Período / Corte</label>
-                      <input
-                        type="text"
-                        value={measurementPeriod}
-                        onChange={(e) => setMeasurementPeriod(e.target.value)}
-                        placeholder="ej. 2026-08 o 2° Corte"
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-slate-600 block mb-1">Observaciones / Respaldo REM</label>
-                    <input
-                      type="text"
-                      placeholder="ej. Validado con REM P01 y registro Rayen"
-                      value={measurementNotes}
-                      onChange={(e) => setMeasurementNotes(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!measurementValue) return;
-                      recordMeasurement(indicator.id, parseFloat(measurementValue), measurementPeriod, measurementNotes);
-                      setMeasurementValue('');
-                      setMeasurementNotes('');
-                      showToast('Medición guardada en el historial', 'success');
-                    }}
-                    className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 active:scale-95 transition-all shadow-xs min-h-[40px]"
-                  >
-                    Guardar Medición en Historial
-                  </button>
-                </div>
 
-                {/* History of measurements */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2">
-                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    Historial de Mediciones ({indicator.measurements.length})
-                  </h4>
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                    {indicator.measurements.length > 0 ? (
-                      indicator.measurements.map((m) => (
-                        <div key={m.id} className="p-2.5 border border-slate-200 rounded-xl flex items-center justify-between text-xs bg-slate-50/50">
-                          <div className="min-w-0 pr-2">
-                            <span className="font-semibold text-slate-800">{m.period}</span>
-                            <span className="text-[11px] text-slate-500 ml-2">({formatDate(m.date)})</span>
-                            {m.notes && <p className="text-[11px] text-slate-500 mt-0.5 truncate">{m.notes}</p>}
-                          </div>
-                          <div className="font-bold text-slate-900 text-right shrink-0">
-                            <div>{m.result} / {m.target} %</div>
-                            <span className="text-[10px] text-slate-400 font-normal">{m.registeredBy}</span>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-slate-400 italic py-2">Sin mediciones previas registradas.</p>
-                    )}
-                  </div>
-                </div>
 
                 {/* Attachments Section */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
@@ -1212,21 +1289,18 @@ export const EntityDrawer: React.FC<{
             <div className="flex items-center justify-stretch sm:justify-end gap-2">
               <button
                 type="button"
-                onClick={handleSaveIndicator}
-                className="flex-1 sm:flex-none px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 active:scale-95 transition-all shadow-sm flex items-center justify-center gap-1.5 min-h-[40px]"
+                onClick={onClose}
+                className="flex-1 sm:flex-none px-4 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-100 active:scale-95 transition-all shadow-2xs min-h-[40px] cursor-pointer"
               >
-                <Save className="h-4 w-4" />
-                <span>Guardar</span>
+                Cancelar
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  handleSaveIndicator();
-                  onClose();
-                }}
-                className="flex-1 sm:flex-none px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 active:scale-95 transition-all shadow-sm min-h-[40px]"
+                onClick={handleSaveIndicator}
+                className="flex-1 sm:flex-none px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 active:scale-95 transition-all shadow-sm flex items-center justify-center gap-1.5 min-h-[40px] cursor-pointer"
               >
-                Guardar y Cerrar
+                <Save className="h-4 w-4" />
+                <span>Guardar</span>
               </button>
             </div>
           </div>

@@ -15,6 +15,7 @@ import {
   MapPin,
   CheckCircle2,
   CalendarDays,
+  ArrowLeft,
 } from 'lucide-react';
 import { ProgramBadge } from '../common/UIComponents';
 import { DrawerEntityType } from '../common/EntityDrawer';
@@ -37,7 +38,7 @@ export const CalendarioView: React.FC<{
   onOpenEntity: (type: DrawerEntityType, id: string) => void;
   onOpenQuickCreate: (tab?: string) => void;
 }> = ({ onOpenEntity, onOpenQuickCreate }) => {
-  const { tasks, meetings, programs } = useApp();
+  const { tasks, meetings, programs, setSelectedProgramId, setActiveView } = useApp();
 
   const [todayStr, setTodayStr] = useState<string>(getTodayDateStr());
   const [selectedProgram, setSelectedProgram] = useState<ProgramId | 'all'>('all');
@@ -165,8 +166,20 @@ export const CalendarioView: React.FC<{
 
         <div className="flex items-center gap-2">
           <button
+            type="button"
+            onClick={() => {
+              setSelectedProgramId(null);
+              setActiveView('dashboard');
+            }}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-slate-900 active:scale-95 transition-all cursor-pointer dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            title="Volver al Dashboard"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+            <span>Volver</span>
+          </button>
+          <button
             onClick={() => onOpenQuickCreate('meeting')}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 active:scale-95 transition-all"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 active:scale-95 transition-all cursor-pointer"
           >
             <Plus className="h-4 w-4" />
             <span>Agendar Evento</span>
