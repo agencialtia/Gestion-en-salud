@@ -24,7 +24,8 @@ export const Header: React.FC<{
   const { 
     currentUser, 
     darkMode,
-    toggleDarkMode
+    toggleDarkMode,
+    logout,
   } = useApp();
 
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -47,13 +48,12 @@ export const Header: React.FC<{
 
   const handleLogout = () => {
     setShowUserMenu(false);
-    // Visual feedback for logout
-    alert('Has cerrado sesión correctamente.');
+    logout();
   };
 
   return (
     <header id="app-header" className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200 bg-white/95 px-3 sm:px-6 backdrop-blur-md">
-      {/* Left: Master App branding + Sidebar toggle + Quick Search trigger */}
+      {/* Left: Branding + Sidebar toggle + Quick Search trigger */}
       <div className="flex items-center gap-2 sm:gap-3">
         <button
           id="btn-toggle-sidebar"

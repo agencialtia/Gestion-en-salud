@@ -21,9 +21,11 @@ import { Programas2025View } from '../views/Programas2025View';
 import { ReunionesGlobalesView } from '../views/ReunionesGlobalesView';
 import { ContactosView } from '../views/ContactosView';
 import { DocumentosView } from '../views/DocumentosView';
+import { AuthView } from '../views/AuthView';
 
 export const Layout: React.FC = () => {
   const {
+    isAuthenticated,
     activeView,
     selectedProgramId,
     deleteTask,
@@ -131,6 +133,15 @@ export const Layout: React.FC = () => {
     setItemToDelete(null);
     setDrawerOpen(false);
   };
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <AuthView />
+        <ToastContainer />
+      </>
+    );
+  }
 
   return (
     <div className="relative flex h-screen w-screen overflow-hidden bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 antialiased transition-colors duration-150">

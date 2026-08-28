@@ -63,6 +63,8 @@ import {
   DocumentVersion,
   DocumentValidityStatus,
   getDocumentEffectiveStatus,
+  AuthScreenType,
+  AuthAccount,
 } from '../types';
 import {
   isGCalConnected,
@@ -103,6 +105,7 @@ import {
   INITIAL_DOCUMENT_CATEGORIES,
 } from '../data/initialData';
 import { formatDate } from '../utils/dateUtils';
+import { getSupabase, isSupabaseConfigured } from '../lib/supabase';
 
 export interface ProgramSummary {
   program: HealthProgram;
@@ -123,6 +126,57 @@ export interface ProgramSummary {
   lastUpdateDate: string;
 }
 
+export const DEFAULT_AUTH_ACCOUNTS: AuthAccount[] = [
+  {
+    id: 'usr_klaus_bauer',
+    name: 'Klaus Bauer',
+    email: 'klausbauer10x@gmail.com',
+    username: 'klaus',
+    passwordHash: 'salud2026',
+    role: 'referente',
+    title: 'Referente Comunal de Programas de Salud',
+    comuna: 'Quilicura (DISAM)',
+    establishment: 'Dirección de Salud / Comunal',
+    healthService: 'SSMN (Metropolitano Norte)',
+    avatar: 'K',
+    authProvider: 'email',
+    emailVerified: true,
+    createdAt: '2025-01-01T08:00:00Z',
+  },
+  {
+    id: 'usr_camila_fuentes',
+    name: 'Dra. Camila Fuentes',
+    email: 'camila.fuentes@quilicura.cl',
+    username: 'cfuentes',
+    passwordHash: 'salud2026',
+    role: 'referente',
+    title: 'Coordinadora Técnica de Salud',
+    comuna: 'Quilicura (DISAM)',
+    establishment: 'Cesfam MBH',
+    healthService: 'SSMN (Metropolitano Norte)',
+    avatar: 'C',
+    authProvider: 'email',
+    emailVerified: true,
+    createdAt: '2025-01-10T09:30:00Z',
+  },
+  {
+    id: 'usr_disam_admin',
+    name: 'Dirección DISAM Quilicura',
+    email: 'disam@quilicura.cl',
+    username: 'admin',
+    passwordHash: 'admin2026',
+    role: 'administrador',
+    title: 'Administrador General DISAM',
+    comuna: 'Quilicura (DISAM)',
+    establishment: 'Dirección de Salud / Comunal',
+    healthService: 'SSMN (Metropolitano Norte)',
+    avatar: 'D',
+    authProvider: 'email',
+    emailVerified: true,
+    createdAt: '2025-01-01T08:00:00Z',
+  },
+];
+
 interface ToastMessage {
   id: string;
   type: 'success' | 'info' | 'warning' | 'error';
@@ -130,6 +184,26 @@ interface ToastMessage {
 }
 
 interface AppContextType {
+  // Authentication & Session
+  isAuthenticated: boolean;
+  isSupabaseActive: boolean;
+  authScreen: AuthScreenType;
+  setAuthScreen: (screen: AuthScreenType) => void;
+  registeredAccounts: AuthAccount[];
+  pendingVerificationEmail: string | null;
+  setPendingVerificationEmail: (email: string | null) => void;
+  pendingResetEmail: string | null;
+  setPendingResetEmail: (email: string | null) => void;
+  login: (identifier: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  loginWithGoogle: (customData?: { email?: string; name?: string; photoUrl?: string }) => Promise<{ success: boolean; error?: string }>;
+  loginWithApple: (customData?: { email?: string; name?: string }) => Promise<{ success: boolean; error?: string }>;
+  registerUser: (data: { name: string; email: string; password: string; role?: string; title?: string; comuna?: string; establishment?: string; healthService?: string }) => Promise<{ success: boolean; error?: string; verificationCode?: string }>;
+  verifyAccountEmail: (email?: string, code?: string) => Promise<{ success: boolean; error?: string }>;
+  resendVerificationLink: (email: string) => Promise<{ success: boolean; error?: string; verificationCode?: string }>;
+  sendPasswordResetLink: (email: string) => Promise<{ success: boolean; error?: string; resetToken?: string }>;
+  resetUserPassword: (newPassword: string, email?: string, token?: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => void;
+
   // Master data
   currentUser: User;
   updateCurrentUser: (updates: Partial<User>) => void;
@@ -340,6 +414,79 @@ const THRESHOLDS_KEY = 'quilicura_salud_thresholds_v1';
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // Authentication & Accounts State
+  const [registeredAccounts, setRegisteredAccounts] = useState<AuthAccount[]>(() => {
+    try {
+      const saved = localStorage.getItem('quilicura_auth_accounts');
+      return saved ? JSON.parse(saved) : DEFAULT_AUTH_ACCOUNTS;
+    } catch {
+      return DEFAULT_AUTH_ACCOUNTS;
+    }
+  });
+
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('quilicura_is_authenticated');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const [authScreen, setAuthScreen] = useState<AuthScreenType>('login');
+
+  const [pendingVerificationEmail, setPendingVerificationEmailState] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('quilicura_pending_verify_email');
+    } catch {
+      return null;
+    }
+  });
+
+  const [pendingResetEmail, setPendingResetEmailState] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('quilicura_pending_reset_email');
+    } catch {
+      return null;
+    }
+  });
+
+  const setPendingVerificationEmail = (email: string | null) => {
+    setPendingVerificationEmailState(email);
+    if (email) {
+      localStorage.setItem('quilicura_pending_verify_email', email);
+    } else {
+      localStorage.removeItem('quilicura_pending_verify_email');
+    }
+  };
+
+  const setPendingResetEmail = (email: string | null) => {
+    setPendingResetEmailState(email);
+    if (email) {
+      localStorage.setItem('quilicura_pending_reset_email', email);
+    } else {
+      localStorage.removeItem('quilicura_pending_reset_email');
+    }
+  };
+
+  // Sync registeredAccounts to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('quilicura_auth_accounts', JSON.stringify(registeredAccounts));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [registeredAccounts]);
+
+  // Sync isAuthenticated to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('quilicura_is_authenticated', String(isAuthenticated));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [isAuthenticated]);
+
   // Load data from localStorage or fallback to seeds
   const [establishments, setEstablishments] = useState<Establishment[]>(() => {
     try {
@@ -453,6 +600,851 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     window.addEventListener('keydown', handleThemeShortcut);
     return () => window.removeEventListener('keydown', handleThemeShortcut);
   }, []);
+
+  // ==========================================
+  // AUTENTICACIÓN Y GESTIÓN DE CUENTAS (SUPABASE + LOCAL)
+  // ==========================================
+
+  // Supabase Auth listener and URL Callback (/auth/callback, ?code=, #access_token=) handler
+  useEffect(() => {
+    const initAuthAndHandleCallback = async () => {
+      if (typeof window === 'undefined') return;
+
+      const url = new URL(window.location.href);
+      const isCallbackPath = url.pathname.includes('/auth/callback');
+      const code = url.searchParams.get('code');
+      const errorCode = url.searchParams.get('error') || url.searchParams.get('error_code');
+      const errorDesc = url.searchParams.get('error_description');
+      const type = url.searchParams.get('type');
+
+      // Check hash params for direct access tokens or errors (e.g. from magic link or password recovery)
+      const hash = window.location.hash.substring(1);
+      const hashParams = new URLSearchParams(hash);
+      const hashAccessToken = hashParams.get('access_token');
+      const hashType = hashParams.get('type');
+      const hashError = hashParams.get('error') || hashParams.get('error_description');
+
+      // 1. Handle error query parameter from Supabase
+      if (errorCode || hashError) {
+        console.warn('Auth callback error:', errorCode || hashError, errorDesc);
+        setAuthScreen('login');
+        showToast(
+          errorDesc
+            ? decodeURIComponent(errorDesc.replace(/\+/g, ' '))
+            : 'El enlace de confirmación ha expirado o no es válido.',
+          'error'
+        );
+        // Clean URL
+        window.history.replaceState({}, document.title, window.location.pathname.replace('/auth/callback', '') || '/');
+        return;
+      }
+
+      // 2. If code is present in URL, exchange for session with Supabase
+      if (code && isSupabaseConfigured()) {
+        try {
+          const supabase = getSupabase();
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) {
+            console.error('Error exchanging code for session:', error);
+            setAuthScreen('login');
+            showToast('El enlace de confirmación ha expirado o ya fue utilizado.', 'error');
+          } else if (data?.user) {
+            const userMeta = data.user.user_metadata || {};
+            const fullName = userMeta.full_name || userMeta.name || data.user.email?.split('@')[0] || 'Usuario';
+            const parts = fullName.trim().split(/\s+/);
+            const avatar =
+              parts.length >= 2
+                ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+                : fullName.substring(0, 2).toUpperCase();
+
+            const loggedUser: User = {
+              id: data.user.id,
+              name: fullName,
+              email: data.user.email || '',
+              role: userMeta.role || 'referente',
+              title: userMeta.title || 'Referente Técnico de Programas',
+              comuna: userMeta.comuna || 'Quilicura (DISAM)',
+              establishment: userMeta.establishment || 'Dirección de Salud / Comunal',
+              healthService: userMeta.healthService || 'SSMN (Metropolitano Norte)',
+              avatar,
+              authProvider: (data.user.app_metadata?.provider as any) || 'email',
+              emailVerified: true,
+            };
+
+            setCurrentUser(loggedUser);
+            setIsAuthenticated(true);
+            try {
+              localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(loggedUser));
+              localStorage.setItem('quilicura_is_authenticated', 'true');
+            } catch (e) {
+              console.error(e);
+            }
+
+            if (type === 'recovery' || hashType === 'recovery') {
+              setAuthScreen('reset_password');
+              showToast('Sesión de recuperación iniciada. Ingresa tu nueva contraseña.', 'info');
+            } else {
+              setAuthScreen('login');
+              showToast('¡Cuenta confirmada y sesión iniciada con éxito!', 'success');
+            }
+          }
+        } catch (err: any) {
+          console.error('Unexpected callback error:', err);
+          showToast('Ocurrió un error al confirmar la cuenta.', 'error');
+        } finally {
+          // Clean the callback params from URL cleanly
+          window.history.replaceState({}, document.title, window.location.pathname.replace('/auth/callback', '') || '/');
+        }
+        return;
+      }
+
+      // 3. If access_token in hash (Implicit Flow / Password Recovery)
+      if (hashAccessToken && isSupabaseConfigured()) {
+        if (hashType === 'recovery') {
+          setAuthScreen('reset_password');
+          showToast('Enlace de recuperación verificado. Establece tu nueva contraseña.', 'info');
+        }
+        window.history.replaceState({}, document.title, window.location.pathname.replace('/auth/callback', '') || '/');
+        return;
+      }
+
+      // 4. Initial session check & continuous auth state listener
+      if (isSupabaseConfigured()) {
+        const supabase = getSupabase();
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session?.user) {
+            const user = sessionData.session.user;
+            const userMeta = user.user_metadata || {};
+            const fullName = userMeta.full_name || userMeta.name || user.email?.split('@')[0] || 'Usuario';
+            const parts = fullName.trim().split(/\s+/);
+            const avatar =
+              parts.length >= 2
+                ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+                : fullName.substring(0, 2).toUpperCase();
+
+            const activeUser: User = {
+              id: user.id,
+              name: fullName,
+              email: user.email || '',
+              role: userMeta.role || 'referente',
+              title: userMeta.title || 'Referente Técnico de Programas',
+              comuna: userMeta.comuna || 'Quilicura (DISAM)',
+              establishment: userMeta.establishment || 'Dirección de Salud / Comunal',
+              healthService: userMeta.healthService || 'SSMN (Metropolitano Norte)',
+              avatar,
+              authProvider: (user.app_metadata?.provider as any) || 'email',
+              emailVerified: Boolean(user.email_confirmed_at || user.confirmed_at),
+            };
+
+            setCurrentUser(activeUser);
+            setIsAuthenticated(true);
+          }
+        } catch (e) {
+          console.error('Error fetching Supabase session:', e);
+        }
+
+        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+          if (event === 'SIGNED_IN' && session?.user) {
+            const user = session.user;
+            const userMeta = user.user_metadata || {};
+            const fullName = userMeta.full_name || userMeta.name || user.email?.split('@')[0] || 'Usuario';
+            const parts = fullName.trim().split(/\s+/);
+            const avatar =
+              parts.length >= 2
+                ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+                : fullName.substring(0, 2).toUpperCase();
+
+            const loggedUser: User = {
+              id: user.id,
+              name: fullName,
+              email: user.email || '',
+              role: userMeta.role || 'referente',
+              title: userMeta.title || 'Referente Técnico de Programas',
+              comuna: userMeta.comuna || 'Quilicura (DISAM)',
+              establishment: userMeta.establishment || 'Dirección de Salud / Comunal',
+              healthService: userMeta.healthService || 'SSMN (Metropolitano Norte)',
+              avatar,
+              authProvider: (user.app_metadata?.provider as any) || 'email',
+              emailVerified: Boolean(user.email_confirmed_at || user.confirmed_at),
+            };
+
+            setCurrentUser(loggedUser);
+            setIsAuthenticated(true);
+            try {
+              localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(loggedUser));
+              localStorage.setItem('quilicura_is_authenticated', 'true');
+            } catch (e) {
+              console.error(e);
+            }
+          } else if (event === 'SIGNED_OUT') {
+            setIsAuthenticated(false);
+            try {
+              localStorage.setItem('quilicura_is_authenticated', 'false');
+            } catch (e) {
+              console.error(e);
+            }
+          } else if (event === 'PASSWORD_RECOVERY') {
+            setAuthScreen('reset_password');
+            showToast('Ingresa tu nueva contraseña para actualizar tu cuenta.', 'info');
+          }
+        });
+
+        return () => {
+          authListener?.subscription?.unsubscribe();
+        };
+      }
+    };
+
+    initAuthAndHandleCallback();
+  }, []);
+
+  const login = async (identifier: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    const cleanId = identifier.trim();
+
+    // 1. If Supabase is configured and identifier looks like an email, try Supabase Auth first
+    if (isSupabaseConfigured() && cleanId.includes('@')) {
+      try {
+        const supabase = getSupabase();
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: cleanId.toLowerCase(),
+          password,
+        });
+
+        if (error) {
+          const msg = error.message.toLowerCase();
+          if (msg.includes('email not confirmed') || msg.includes('not confirmed') || error.status === 400 && msg.includes('confirmed')) {
+            setPendingVerificationEmail(cleanId.toLowerCase());
+            setAuthScreen('verify_email');
+            return {
+              success: false,
+              error: 'Email not confirmed',
+            };
+          }
+
+          if (msg.includes('invalid login credentials') || msg.includes('invalid_grant')) {
+            return {
+              success: false,
+              error: 'Credenciales inválidas. Verifica tu correo y contraseña.',
+            };
+          }
+
+          return { success: false, error: error.message };
+        }
+
+        if (data?.user) {
+          const userMeta = data.user.user_metadata || {};
+          const fullName = userMeta.full_name || userMeta.name || data.user.email?.split('@')[0] || 'Usuario';
+          const parts = fullName.trim().split(/\s+/);
+          const avatar =
+            parts.length >= 2
+              ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+              : fullName.substring(0, 2).toUpperCase();
+
+          const userToSet: User = {
+            id: data.user.id,
+            name: fullName,
+            email: data.user.email || cleanId,
+            role: userMeta.role || 'referente',
+            title: userMeta.title || 'Referente Técnico de Programas',
+            comuna: userMeta.comuna || 'Quilicura (DISAM)',
+            establishment: userMeta.establishment || 'Dirección de Salud / Comunal',
+            healthService: userMeta.healthService || 'SSMN (Metropolitano Norte)',
+            avatar,
+            authProvider: 'email',
+            emailVerified: Boolean(data.user.email_confirmed_at || data.user.confirmed_at),
+          };
+
+          setCurrentUser(userToSet);
+          try {
+            localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(userToSet));
+            localStorage.setItem('quilicura_is_authenticated', 'true');
+          } catch (e) {
+            console.error(e);
+          }
+          setIsAuthenticated(true);
+          showToast(`¡Bienvenido/a, ${fullName}!`, 'success');
+          return { success: true };
+        }
+      } catch (err: any) {
+        console.error('Supabase signIn error:', err);
+      }
+    }
+
+    // 2. Fallback / Local account login (supports username or demo accounts)
+    const lowerId = cleanId.toLowerCase();
+    const account = registeredAccounts.find(
+      (a) => a.email.toLowerCase() === lowerId || (a.username && a.username.toLowerCase() === lowerId)
+    );
+
+    if (!account) {
+      return { success: false, error: 'No se encontró ninguna cuenta registrada con este correo o usuario.' };
+    }
+
+    if (account.passwordHash && account.passwordHash !== password) {
+      return { success: false, error: 'La contraseña ingresada no es válida. Si la olvidaste, puedes recuperarla.' };
+    }
+
+    if (!account.emailVerified) {
+      setPendingVerificationEmail(account.email);
+      setAuthScreen('verify_email');
+      return {
+        success: false,
+        error: 'Email not confirmed',
+      };
+    }
+
+    // Set as current active user
+    const userToSet: User = {
+      id: account.id,
+      name: account.name,
+      email: account.email,
+      role: account.role || 'referente',
+      title: account.title || 'Referente Técnico de Programas',
+      comuna: account.comuna || 'Quilicura (DISAM)',
+      establishment: account.establishment || 'Dirección de Salud / Comunal',
+      healthService: account.healthService || 'SSMN (Metropolitano Norte)',
+      avatar: account.avatar || account.name.substring(0, 2).toUpperCase(),
+      photoUrl: account.photoUrl,
+      authProvider: account.authProvider || 'email',
+      emailVerified: true,
+    };
+
+    setCurrentUser(userToSet);
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(userToSet));
+      localStorage.setItem('quilicura_is_authenticated', 'true');
+    } catch (e) {
+      console.error(e);
+    }
+    setIsAuthenticated(true);
+    showToast(`¡Bienvenido/a de nuevo, ${account.name}!`, 'success');
+    return { success: true };
+  };
+
+  const loginWithGoogle = async (customData?: { email?: string; name?: string; photoUrl?: string }): Promise<{ success: boolean; error?: string }> => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = getSupabase();
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
+        if (error) {
+          console.warn('OAuth redirect issue, falling back:', error.message);
+        } else {
+          return { success: true };
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    const email = customData?.email || 'klausbauer10x@gmail.com';
+    const name = customData?.name || 'Klaus Bauer (Google)';
+    const photoUrl = customData?.photoUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+
+    let account = registeredAccounts.find((a) => a.email.toLowerCase() === email.toLowerCase());
+
+    if (!account) {
+      account = {
+        id: `usr_google_${Date.now()}`,
+        email,
+        name,
+        role: 'referente',
+        title: 'Referente Comunal de Programas de Salud',
+        comuna: 'Quilicura (DISAM)',
+        establishment: 'Dirección de Salud / Comunal',
+        healthService: 'SSMN (Metropolitano Norte)',
+        avatar: 'G',
+        photoUrl,
+        authProvider: 'google',
+        emailVerified: true,
+        createdAt: new Date().toISOString(),
+      };
+      setRegisteredAccounts((prev) => [...prev, account!]);
+    } else {
+      account = { ...account, emailVerified: true, authProvider: 'google' };
+      setRegisteredAccounts((prev) => prev.map((a) => (a.id === account!.id ? account! : a)));
+    }
+
+    const userToSet: User = {
+      id: account.id,
+      name: account.name,
+      email: account.email,
+      role: account.role,
+      title: account.title,
+      comuna: account.comuna,
+      establishment: account.establishment,
+      healthService: account.healthService,
+      avatar: 'G',
+      photoUrl: account.photoUrl || photoUrl,
+      authProvider: 'google',
+      emailVerified: true,
+    };
+
+    setCurrentUser(userToSet);
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(userToSet));
+      localStorage.setItem('quilicura_is_authenticated', 'true');
+    } catch (e) {
+      console.error(e);
+    }
+    setIsAuthenticated(true);
+    showToast(`Sesión iniciada con Google (${email})`, 'success');
+    return { success: true };
+  };
+
+  const loginWithApple = async (customData?: { email?: string; name?: string }): Promise<{ success: boolean; error?: string }> => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = getSupabase();
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'apple',
+          options: {
+            redirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
+        if (error) {
+          console.warn('Apple OAuth redirect issue, falling back:', error.message);
+        } else {
+          return { success: true };
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    const email = customData?.email || 'usuario.apple@quilicura.cl';
+    const name = customData?.name || 'Usuario Apple ID';
+
+    let account = registeredAccounts.find((a) => a.email.toLowerCase() === email.toLowerCase());
+
+    if (!account) {
+      account = {
+        id: `usr_apple_${Date.now()}`,
+        email,
+        name,
+        role: 'referente',
+        title: 'Referente de Salud',
+        comuna: 'Quilicura (DISAM)',
+        establishment: 'Dirección de Salud / Comunal',
+        healthService: 'SSMN (Metropolitano Norte)',
+        avatar: 'A',
+        authProvider: 'apple',
+        emailVerified: true,
+        createdAt: new Date().toISOString(),
+      };
+      setRegisteredAccounts((prev) => [...prev, account!]);
+    } else {
+      account = { ...account, emailVerified: true, authProvider: 'apple' };
+      setRegisteredAccounts((prev) => prev.map((a) => (a.id === account!.id ? account! : a)));
+    }
+
+    const userToSet: User = {
+      id: account.id,
+      name: account.name,
+      email: account.email,
+      role: account.role,
+      title: account.title,
+      comuna: account.comuna,
+      establishment: account.establishment,
+      healthService: account.healthService,
+      avatar: 'A',
+      authProvider: 'apple',
+      emailVerified: true,
+    };
+
+    setCurrentUser(userToSet);
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(userToSet));
+      localStorage.setItem('quilicura_is_authenticated', 'true');
+    } catch (e) {
+      console.error(e);
+    }
+    setIsAuthenticated(true);
+    showToast(`Sesión iniciada con Apple ID`, 'success');
+    return { success: true };
+  };
+
+  const registerUser = async (data: {
+    name: string;
+    email: string;
+    password: string;
+    role?: string;
+    title?: string;
+    comuna?: string;
+    establishment?: string;
+    healthService?: string;
+  }): Promise<{ success: boolean; error?: string; verificationCode?: string }> => {
+    const cleanEmail = data.email.trim().toLowerCase();
+
+    // 1. If Supabase is configured, register with Supabase Auth
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = getSupabase();
+        const redirectTo = `${window.location.origin}/auth/callback`;
+        const { data: signUpData, error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: data.password,
+          options: {
+            data: {
+              full_name: data.name.trim(),
+              name: data.name.trim(),
+              role: data.role || 'referente',
+              title: data.title || 'Referente de Programas de Salud',
+              comuna: data.comuna || 'Quilicura (DISAM)',
+              establishment: data.establishment || 'Dirección de Salud / Comunal',
+              healthService: data.healthService || 'SSMN (Metropolitano Norte)',
+            },
+            emailRedirectTo: redirectTo,
+          },
+        });
+
+        if (error) {
+          const msg = error.message.toLowerCase();
+          if (
+            msg.includes('user already registered') ||
+            msg.includes('already registered') ||
+            msg.includes('already exists')
+          ) {
+            return {
+              success: false,
+              error: 'Ya existe una cuenta registrada con este correo electrónico. Por favor inicia sesión.',
+            };
+          }
+          return { success: false, error: error.message };
+        }
+
+        // Also save to registered accounts list for local cache and simulation
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const nameParts = data.name.trim().split(/\s+/);
+        const avatar =
+          nameParts.length >= 2
+            ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+            : data.name.substring(0, 2).toUpperCase();
+
+        const newAccount: AuthAccount = {
+          id: signUpData.user?.id || `usr_${Date.now()}`,
+          email: cleanEmail,
+          username: cleanEmail.split('@')[0],
+          passwordHash: data.password,
+          name: data.name.trim(),
+          role: data.role || 'referente',
+          title: data.title || 'Referente de Programas de Salud',
+          comuna: data.comuna || 'Quilicura (DISAM)',
+          establishment: data.establishment || 'Dirección de Salud / Comunal',
+          healthService: data.healthService || 'SSMN (Metropolitano Norte)',
+          avatar,
+          authProvider: 'email',
+          emailVerified: false,
+          verificationCode,
+          createdAt: new Date().toISOString(),
+        };
+
+        setRegisteredAccounts((prev) => [...prev.filter((a) => a.email.toLowerCase() !== cleanEmail), newAccount]);
+        setPendingVerificationEmail(cleanEmail);
+        setAuthScreen('verify_email');
+        showToast(`Revisa tu correo para confirmar tu cuenta (${cleanEmail})`, 'info');
+
+        return { success: true, verificationCode };
+      } catch (err: any) {
+        console.error('Supabase signUp error:', err);
+        return { success: false, error: err?.message || 'Error al conectar con Supabase Auth.' };
+      }
+    }
+
+    // 2. Fallback / Local account registration
+    const existing = registeredAccounts.find((a) => a.email.toLowerCase() === cleanEmail);
+    if (existing) {
+      return { success: false, error: 'Ya existe una cuenta registrada con este correo electrónico. Por favor inicia sesión.' };
+    }
+
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const nameParts = data.name.trim().split(/\s+/);
+    const avatar =
+      nameParts.length >= 2
+        ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+        : data.name.substring(0, 2).toUpperCase();
+
+    const newAccount: AuthAccount = {
+      id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      email: cleanEmail,
+      username: cleanEmail.split('@')[0],
+      passwordHash: data.password,
+      name: data.name.trim(),
+      role: data.role || 'referente',
+      title: data.title || 'Referente de Programas de Salud',
+      comuna: data.comuna || 'Quilicura (DISAM)',
+      establishment: data.establishment || 'Dirección de Salud / Comunal',
+      healthService: data.healthService || 'SSMN (Metropolitano Norte)',
+      avatar,
+      authProvider: 'email',
+      emailVerified: false,
+      verificationCode,
+      createdAt: new Date().toISOString(),
+    };
+
+    setRegisteredAccounts((prev) => [...prev, newAccount]);
+    setPendingVerificationEmail(cleanEmail);
+    setAuthScreen('verify_email');
+    showToast(`¡Cuenta registrada! Revisa tu correo para confirmar tu cuenta`, 'info');
+
+    return { success: true, verificationCode };
+  };
+
+  const verifyAccountEmail = async (email?: string, code?: string): Promise<{ success: boolean; error?: string }> => {
+    const targetEmail = (email || pendingVerificationEmail || '').trim().toLowerCase();
+    if (!targetEmail) {
+      return { success: false, error: 'No se especificó un correo para verificar.' };
+    }
+
+    // If Supabase is configured and a code was passed, try verifying OTP
+    if (isSupabaseConfigured() && code) {
+      try {
+        const supabase = getSupabase();
+        const { data, error } = await supabase.auth.verifyOtp({
+          email: targetEmail,
+          token: code.trim(),
+          type: 'signup',
+        });
+        if (!error && data.user) {
+          const userMeta = data.user.user_metadata || {};
+          const fullName = userMeta.full_name || userMeta.name || data.user.email?.split('@')[0] || 'Usuario';
+          const parts = fullName.trim().split(/\s+/);
+          const avatar =
+            parts.length >= 2
+              ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+              : fullName.substring(0, 2).toUpperCase();
+
+          const userToSet: User = {
+            id: data.user.id,
+            name: fullName,
+            email: data.user.email || targetEmail,
+            role: userMeta.role || 'referente',
+            title: userMeta.title || 'Referente Técnico de Programas',
+            comuna: userMeta.comuna || 'Quilicura (DISAM)',
+            establishment: userMeta.establishment || 'Dirección de Salud / Comunal',
+            healthService: userMeta.healthService || 'SSMN (Metropolitano Norte)',
+            avatar,
+            authProvider: 'email',
+            emailVerified: true,
+          };
+
+          setCurrentUser(userToSet);
+          setIsAuthenticated(true);
+          setPendingVerificationEmail(null);
+          setAuthScreen('login');
+          showToast('¡Correo electrónico verificado con éxito! Tu cuenta está activa.', 'success');
+          return { success: true };
+        }
+      } catch (err) {
+        console.warn('Supabase verifyOtp attempt:', err);
+      }
+    }
+
+    const account = registeredAccounts.find((a) => a.email.toLowerCase() === targetEmail);
+    if (!account) {
+      return { success: false, error: 'Cuenta no encontrada.' };
+    }
+
+    if (code && account.verificationCode && code.trim() !== account.verificationCode.trim()) {
+      return { success: false, error: 'El código de verificación ingresado no coincide.' };
+    }
+
+    const updatedAccount: AuthAccount = {
+      ...account,
+      emailVerified: true,
+      verificationCode: undefined,
+    };
+
+    setRegisteredAccounts((prev) => prev.map((a) => (a.id === account.id ? updatedAccount : a)));
+    setPendingVerificationEmail(null);
+
+    const userToSet: User = {
+      id: updatedAccount.id,
+      name: updatedAccount.name,
+      email: updatedAccount.email,
+      role: updatedAccount.role,
+      title: updatedAccount.title,
+      comuna: updatedAccount.comuna,
+      establishment: updatedAccount.establishment,
+      healthService: updatedAccount.healthService,
+      avatar: updatedAccount.avatar,
+      photoUrl: updatedAccount.photoUrl,
+      authProvider: updatedAccount.authProvider,
+      emailVerified: true,
+    };
+
+    setCurrentUser(userToSet);
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(userToSet));
+      localStorage.setItem('quilicura_is_authenticated', 'true');
+    } catch (e) {
+      console.error(e);
+    }
+    setIsAuthenticated(true);
+    setAuthScreen('login');
+    showToast('¡Correo electrónico verificado con éxito! Tu cuenta está activa.', 'success');
+
+    return { success: true };
+  };
+
+  const resendVerificationLink = async (email: string): Promise<{ success: boolean; error?: string; verificationCode?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 1. If Supabase is configured, call supabase.auth.resend
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = getSupabase();
+        const { error } = await supabase.auth.resend({
+          type: 'signup',
+          email: cleanEmail,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
+
+        if (error) {
+          console.error('Supabase resend error:', error);
+          return { success: false, error: error.message };
+        }
+
+        setPendingVerificationEmail(cleanEmail);
+        showToast(`Correo de confirmación reenviado a ${cleanEmail}`, 'info');
+        return { success: true };
+      } catch (err: any) {
+        console.error('Supabase resend exception:', err);
+      }
+    }
+
+    // 2. Fallback / Local code regeneration
+    const account = registeredAccounts.find((a) => a.email.toLowerCase() === cleanEmail);
+    const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    if (account) {
+      setRegisteredAccounts((prev) =>
+        prev.map((a) => (a.id === account.id ? { ...a, verificationCode: newCode } : a))
+      );
+    }
+
+    setPendingVerificationEmail(cleanEmail);
+    showToast(`Nuevo enlace de confirmación enviado a ${cleanEmail}`, 'info');
+
+    return { success: true, verificationCode: newCode };
+  };
+
+  const sendPasswordResetLink = async (email: string): Promise<{ success: boolean; error?: string; resetToken?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 1. If Supabase is configured, call resetPasswordForEmail
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = getSupabase();
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: `${window.location.origin}/auth/callback?type=recovery`,
+        });
+
+        if (error) {
+          return { success: false, error: error.message };
+        }
+
+        setPendingResetEmail(cleanEmail);
+        showToast(`Enlace de restablecimiento enviado a ${cleanEmail}`, 'info');
+        return { success: true };
+      } catch (err: any) {
+        console.error('Supabase resetPassword error:', err);
+      }
+    }
+
+    const account = registeredAccounts.find((a) => a.email.toLowerCase() === cleanEmail);
+    if (!account) {
+      return { success: false, error: 'No encontramos ninguna cuenta con el correo especificado.' };
+    }
+
+    const resetToken = `tok_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    setRegisteredAccounts((prev) =>
+      prev.map((a) => (a.id === account.id ? { ...a, resetToken } : a))
+    );
+    setPendingResetEmail(cleanEmail);
+    showToast(`Enlace de restablecimiento de contraseña enviado a ${cleanEmail}`, 'info');
+
+    return { success: true, resetToken };
+  };
+
+  const resetUserPassword = async (newPassword: string, email?: string, token?: string): Promise<{ success: boolean; error?: string }> => {
+    const targetEmail = (email || pendingResetEmail || '').trim().toLowerCase();
+
+    // 1. If Supabase is configured, call updateUser
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = getSupabase();
+        const { error } = await supabase.auth.updateUser({
+          password: newPassword,
+        });
+
+        if (error) {
+          return { success: false, error: error.message };
+        }
+
+        setPendingResetEmail(null);
+        setAuthScreen('login');
+        showToast('¡Contraseña restablecida con éxito! Inicia sesión con tu nueva contraseña.', 'success');
+        return { success: true };
+      } catch (err: any) {
+        console.error('Supabase updateUser password error:', err);
+      }
+    }
+
+    if (!targetEmail) {
+      return { success: false, error: 'Correo no especificado para restablecer la contraseña.' };
+    }
+
+    const account = registeredAccounts.find((a) => a.email.toLowerCase() === targetEmail);
+    if (!account) {
+      return { success: false, error: 'Cuenta no encontrada.' };
+    }
+
+    if (token && account.resetToken && token !== account.resetToken) {
+      return { success: false, error: 'El token de recuperación ha caducado o no es válido.' };
+    }
+
+    setRegisteredAccounts((prev) =>
+      prev.map((a) =>
+        a.id === account.id
+          ? { ...a, passwordHash: newPassword, resetToken: undefined }
+          : a
+      )
+    );
+    setPendingResetEmail(null);
+    setAuthScreen('login');
+    showToast('¡Contraseña restablecida con éxito! Inicia sesión con tu nueva contraseña.', 'success');
+
+    return { success: true };
+  };
+
+  const logout = async () => {
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = getSupabase();
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    setIsAuthenticated(false);
+    try {
+      localStorage.setItem('quilicura_is_authenticated', 'false');
+    } catch (e) {
+      console.error(e);
+    }
+    setAuthScreen('login');
+    showToast('Has cerrado sesión correctamente.', 'info');
+  };
+
 
   const updateCurrentUser = (updates: Partial<User>) => {
     setCurrentUser((prev) => {
@@ -3464,6 +4456,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   return (
     <AppContext.Provider
       value={{
+        isAuthenticated,
+        isSupabaseActive: isSupabaseConfigured(),
+        authScreen,
+        setAuthScreen,
+        registeredAccounts,
+        pendingVerificationEmail,
+        setPendingVerificationEmail,
+        pendingResetEmail,
+        setPendingResetEmail,
+        login,
+        loginWithGoogle,
+        loginWithApple,
+        registerUser,
+        verifyAccountEmail,
+        resendVerificationLink,
+        sendPasswordResetLink,
+        resetUserPassword,
+        logout,
         currentUser,
         establishments,
         programs,

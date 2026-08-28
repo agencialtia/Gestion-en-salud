@@ -126,8 +126,33 @@ export interface User {
   instagram?: string;
   country?: string;
   photoUrl?: string;
+  authProvider?: 'email' | 'google' | 'apple';
+  emailVerified?: boolean;
   [key: string]: any;
 }
+
+export type AuthScreenType = 'login' | 'register' | 'forgot_password' | 'reset_password' | 'verify_email';
+
+export interface AuthAccount {
+  id: string;
+  email: string;
+  username?: string;
+  passwordHash?: string;
+  name: string;
+  role: string;
+  title: string;
+  comuna?: string;
+  establishment?: string;
+  healthService?: string;
+  avatar?: string;
+  photoUrl?: string;
+  authProvider: 'email' | 'google' | 'apple';
+  emailVerified: boolean;
+  verificationCode?: string;
+  resetToken?: string;
+  createdAt?: string;
+}
+
 
 export interface HealthProgram {
   id: ProgramId;
