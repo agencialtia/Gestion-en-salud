@@ -444,9 +444,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('quilicura_is_authenticated');
-      return saved !== null ? saved === 'true' : true;
+      return saved !== null ? saved === 'true' : false;
     } catch {
-      return true;
+      return false;
     }
   });
 
@@ -850,7 +850,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const login = async (identifier: string, password: string): Promise<{ success: boolean; error?: string }> => {
     const cleanId = identifier.trim();
 
-    // 1. If Supabase is configured and identifier looks like an email, try Supabase Auth
+    // 1. If Supabase is configured and identifier looks like an email, authenticates with Supabase Auth (signInWithPassword)
     if (isSupabaseConfigured() && cleanId.includes('@')) {
       try {
         const supabase = getSupabase();
@@ -876,18 +876,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             msg.includes('user not registered') ||
             error.status === 400
           ) {
-            // Check if account exists locally before giving error
-            const localAcc = registeredAccounts.find((a) => a.email.toLowerCase() === cleanId.toLowerCase());
-            if (localAcc && localAcc.passwordHash === password) {
-              // Proceed with local account login below
-            } else {
-              return {
-                success: false,
-                error: 'Credenciales inválidas. Verifica tu correo y contraseña.',
-              };
-            }
+            return {
+              success: false,
+              error: 'Credenciales inválidas. Verifica tu correo y contraseña.',
+            };
           } else if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed') || msg.includes('connection')) {
-            console.warn('Supabase signIn network issue, falling back to local accounts');
+            console.warn('Supabase signIn network issue, check connection');
+            return {
+              success: false,
+              error: 'Error de conexión con el servicio de autenticación Supabase. Inténtalo más tarde.',
+            };
           } else {
             return { success: false, error: error.message };
           }
@@ -929,6 +927,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       } catch (err: any) {
         console.error('Supabase signIn error:', err);
+        return { success: false, error: err?.message || 'Error al iniciar sesión con Supabase Auth.' };
       }
     }
 
