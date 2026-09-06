@@ -861,12 +861,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         if (error) {
           const msg = error.message.toLowerCase();
-          if (msg.includes('email not confirmed') || msg.includes('not confirmed') || error.status === 400 && msg.includes('confirmed')) {
+          if (msg.includes('email not confirmed') || msg.includes('not confirmed') || (error.status === 400 && msg.includes('confirmed'))) {
             setPendingVerificationEmail(cleanId.toLowerCase());
-            setAuthScreen('verify_email');
             return {
               success: false,
-              error: 'Email not confirmed',
+              error: 'Por favor confirma tu correo electrónico antes de iniciar sesión. Revisa el enlace de verificación enviado a tu correo.',
             };
           }
 
@@ -949,10 +948,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (!account.emailVerified) {
       setPendingVerificationEmail(account.email);
-      setAuthScreen('verify_email');
       return {
         success: false,
-        error: 'Email not confirmed',
+        error: 'Por favor confirma tu correo electrónico antes de iniciar sesión. Revisa el enlace de verificación enviado a tu correo.',
       };
     }
 
@@ -1193,11 +1191,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }): Promise<{ success: boolean; error?: string; verificationCode?: string }> => {
     const cleanEmail = data.email.trim().toLowerCase();
 
-    // 1. If Supabase is configured, register with Supabase Auth
+    // 1. If Supabase is configured, check and register with Supabase Auth
     if (isSupabaseConfigured()) {
       try {
         const supabase = getSupabase();
         const redirectTo = `${window.location.origin}/auth/callback`;
+
+        // Execute Supabase SignUp
         const { data: signUpData, error } = await supabase.auth.signUp({
           email: cleanEmail,
           password: data.password,
@@ -1215,98 +1215,84 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           },
         });
 
-        if (error) {
-          const msg = error.message.toLowerCase();
-          if (
-            msg.includes('user already registered') ||
-            msg.includes('already registered') ||
-            msg.includes('already exists') ||
-            msg.includes('user with this email already exists')
-          ) {
-            return {
-              success: false,
-              error: 'Ya existe una cuenta registrada con este correo electrónico. Por favor inicia sesión.',
-            };
-          }
-          console.warn('Supabase signup returned error, attempting fallback:', error.message);
-          // If not a duplicate user error, continue to fallback local registration
-        } else {
-          // Also save to registered accounts list for local cache and simulation
-          const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-          const nameParts = data.name.trim().split(/\s+/);
-          const avatar =
-            nameParts.length >= 2
-              ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
-              : data.name.substring(0, 2).toUpperCase();
+        // Analyze if the user already exists in Supabase
+        const isAlreadyRegistered =
+          (error &&
+            (error.message.toLowerCase().includes('already registered') ||
+              error.message.toLowerCase().includes('already exists') ||
+              error.message.toLowerCase().includes('user with this email already exists'))) ||
+          (signUpData?.user && signUpData.user.identities && signUpData.user.identities.length === 0);
 
-          const newAccount: AuthAccount = {
-            id: signUpData?.user?.id || `usr_${Date.now()}`,
-            email: cleanEmail,
-            username: cleanEmail.split('@')[0],
-            passwordHash: data.password,
-            name: data.name.trim(),
-            role: data.role || 'referente',
-            title: data.title || 'Referente de Programas de Salud',
-            comuna: data.comuna || 'Quilicura (DISAM)',
-            establishment: data.establishment || 'Dirección de Salud / Comunal',
-            healthService: data.healthService || 'SSMN (Metropolitano Norte)',
-            avatar,
-            authProvider: 'email',
-            emailVerified: Boolean(signUpData?.user?.email_confirmed_at),
-            verificationCode,
-            createdAt: new Date().toISOString(),
+        if (isAlreadyRegistered) {
+          setAuthScreen('login');
+          showToast(`La cuenta ${cleanEmail} ya está registrada en Supabase. Redirigiendo a Iniciar Sesión...`, 'info');
+          return {
+            success: false,
+            error: 'Esta cuenta ya está registrada en Supabase. Por favor inicia sesión con tu correo y contraseña.',
           };
-
-          setRegisteredAccounts((prev) => [...prev.filter((a) => a.email.toLowerCase() !== cleanEmail), newAccount]);
-          setPendingVerificationEmail(cleanEmail);
-          setAuthScreen('verify_email');
-          showToast(`Revisa tu correo para confirmar tu cuenta (${cleanEmail})`, 'info');
-
-          return { success: true, verificationCode };
         }
+
+        if (error) {
+          console.warn('Supabase signup error:', error.message);
+          return { success: false, error: error.message };
+        }
+
+        // New user created in Supabase!
+        const nameParts = data.name.trim().split(/\s+/);
+        const avatar =
+          nameParts.length >= 2
+            ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+            : data.name.substring(0, 2).toUpperCase();
+
+        // Also upsert user profile record into public.users table in Supabase
+        if (signUpData?.user?.id) {
+          try {
+            await supabase.from('users').upsert({
+              id: signUpData.user.id,
+              email: cleanEmail,
+              name: data.name.trim(),
+              role: data.role || 'referente',
+              title: data.title || 'Referente de Programas de Salud',
+              comuna: data.comuna || 'Quilicura (DISAM)',
+              establishment: data.establishment || 'Dirección de Salud / Comunal',
+              health_service: data.healthService || 'SSMN (Metropolitano Norte)',
+              avatar,
+              auth_provider: 'email',
+              email_verified: Boolean(signUpData.user.email_confirmed_at),
+            });
+          } catch (e) {
+            console.warn('Error al guardar en tabla public.users:', e);
+          }
+        }
+
+        const newAccount: AuthAccount = {
+          id: signUpData?.user?.id || `usr_${Date.now()}`,
+          email: cleanEmail,
+          username: cleanEmail.split('@')[0],
+          passwordHash: data.password,
+          name: data.name.trim(),
+          role: data.role || 'referente',
+          title: data.title || 'Referente de Programas de Salud',
+          comuna: data.comuna || 'Quilicura (DISAM)',
+          establishment: data.establishment || 'Dirección de Salud / Comunal',
+          healthService: data.healthService || 'SSMN (Metropolitano Norte)',
+          avatar,
+          authProvider: 'email',
+          emailVerified: Boolean(signUpData?.user?.email_confirmed_at),
+          createdAt: new Date().toISOString(),
+        };
+
+        setRegisteredAccounts((prev) => [...prev.filter((a) => a.email.toLowerCase() !== cleanEmail), newAccount]);
+        setPendingVerificationEmail(cleanEmail);
+        setAuthScreen('login');
+        showToast(`¡Usuario creado! Se ha enviado el enlace oficial de confirmación a tu correo (${cleanEmail}).`, 'success');
+
+        return { success: true };
       } catch (err: any) {
-        console.warn('Supabase signUp network error, seamlessly using local storage:', err);
-        // Fall through to fallback / Local account registration
+        console.error('Error al registrar cuenta en Supabase:', err);
+        return { success: false, error: err?.message || 'Error al conectar con Supabase.' };
       }
     }
-
-    // 2. Fallback / Local account registration
-    const existing = registeredAccounts.find((a) => a.email.toLowerCase() === cleanEmail);
-    if (existing) {
-      return { success: false, error: 'Ya existe una cuenta registrada con este correo electrónico. Por favor inicia sesión.' };
-    }
-
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const nameParts = data.name.trim().split(/\s+/);
-    const avatar =
-      nameParts.length >= 2
-        ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
-        : data.name.substring(0, 2).toUpperCase();
-
-    const newAccount: AuthAccount = {
-      id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      email: cleanEmail,
-      username: cleanEmail.split('@')[0],
-      passwordHash: data.password,
-      name: data.name.trim(),
-      role: data.role || 'referente',
-      title: data.title || 'Referente de Programas de Salud',
-      comuna: data.comuna || 'Quilicura (DISAM)',
-      establishment: data.establishment || 'Dirección de Salud / Comunal',
-      healthService: data.healthService || 'SSMN (Metropolitano Norte)',
-      avatar,
-      authProvider: 'email',
-      emailVerified: false,
-      verificationCode,
-      createdAt: new Date().toISOString(),
-    };
-
-    setRegisteredAccounts((prev) => [...prev.filter((a) => a.email.toLowerCase() !== cleanEmail), newAccount]);
-    setPendingVerificationEmail(cleanEmail);
-    setAuthScreen('verify_email');
-    showToast(`¡Cuenta creada! Se ha enviado el código de verificación a ${cleanEmail}`, 'info');
-
-    return { success: true, verificationCode };
   };
 
   const verifyAccountEmail = async (email?: string, code?: string): Promise<{ success: boolean; error?: string }> => {

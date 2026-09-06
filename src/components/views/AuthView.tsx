@@ -403,21 +403,12 @@ export const AuthView: React.FC = () => {
                             const email = loginIdentifier.includes('@') ? loginIdentifier : pendingVerificationEmail || '';
                             if (email) {
                               resendVerificationLink(email);
-                              setPendingVerificationEmail(email);
                             }
-                            setAuthScreen('verify_email');
                           }}
                           className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
                         >
                           <Mail className="w-3.5 h-3.5" />
-                          <span>Reenviar correo</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAuthScreen('verify_email')}
-                          className="text-xs text-slate-600 dark:text-slate-400 hover:underline"
-                        >
-                          Ingresar PIN
+                          <span>Reenviar correo de confirmación</span>
                         </button>
                       </div>
                     )}
@@ -736,7 +727,7 @@ export const AuthView: React.FC = () => {
                 </div>
 
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 max-w-xs mx-auto">
-                  Haz clic en el enlace recibido o introduce tu código PIN de 6 dígitos:
+                  Por favor revisa tu casilla de correo electrónico y haz clic en el enlace recibido para activar tu cuenta.
                 </p>
 
                 {verifyError && (
@@ -746,38 +737,20 @@ export const AuthView: React.FC = () => {
                   </div>
                 )}
 
-                {/* 6-Digit Code Input Form */}
-                <form onSubmit={handleVerifySubmit} className="mt-4 space-y-3.5">
-                  <div>
-                    <input
-                      id="input-verify-code"
-                      type="text"
-                      maxLength={6}
-                      value={verifyCodeInput}
-                      onChange={(e) => setVerifyCodeInput(e.target.value.replace(/[^0-9]/g, ''))}
-                      placeholder="123456"
-                      className="w-44 mx-auto text-center tracking-[0.35em] font-mono text-2xl py-2 px-3 bg-[#f8fafc] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-blue-600 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <button
-                      id="btn-confirm-code"
-                      type="submit"
-                      disabled={verifyLoading}
-                      className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white font-semibold text-sm shadow-lg shadow-indigo-500/25 transition flex items-center justify-center gap-2"
-                    >
-                      {verifyLoading ? (
-                        <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>Activar y Confirmar Cuenta</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </form>
+                <div className="mt-5 space-y-3">
+                  <button
+                    id="btn-goto-login"
+                    type="button"
+                    onClick={() => {
+                      setPendingVerificationEmail(null);
+                      setAuthScreen('login');
+                    }}
+                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white font-semibold text-sm shadow-lg shadow-indigo-500/25 transition flex items-center justify-center gap-2"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Volver a Iniciar Sesión</span>
+                  </button>
+                </div>
 
                 {/* Resend Link */}
                 <div className="mt-5 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
@@ -794,20 +767,6 @@ export const AuthView: React.FC = () => {
                     }`}
                   >
                     {resendCooldown > 0 ? `Reenviar en ${resendCooldown}s` : 'Reenviar enlace'}
-                  </button>
-                </div>
-
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPendingVerificationEmail(null);
-                      setAuthScreen('login');
-                    }}
-                    className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5" />
-                    <span>Volver a Iniciar Sesión</span>
                   </button>
                 </div>
               </motion.div>
