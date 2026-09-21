@@ -1,10 +1,8 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Project credentials provided for Supabase
-export const SUPABASE_PROJECT_ID = 'lpcwfyvlbytpgydpmirx';
-export const OFFICIAL_SUPABASE_URL = 'https://lpcwfyvlbytpgydpmirx.supabase.co';
-export const OFFICIAL_SUPABASE_REST_URL = 'https://lpcwfyvlbytpgydpmirx.supabase.co/rest/v1';
-export const OFFICIAL_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_IwlcYHYunVmv3gyl_kDITw_II31rY_8';
+// Safe fallbacks only used to prevent client initialization crashes if env vars are missing
+const FALLBACK_URL = 'https://placeholder.supabase.co';
+const FALLBACK_KEY = 'placeholder_key_not_configured';
 
 // Environment variable retrieval with support for Vite (VITE_*) and Next.js (NEXT_PUBLIC_*)
 const getEnvVar = (viteKey: string, nextKey: string): string => {
@@ -21,11 +19,11 @@ const getEnvVar = (viteKey: string, nextKey: string): string => {
 
 // Strips trailing /rest/v1, /auth/v1, or trailing slashes to ensure standard Supabase client URL
 export const sanitizeSupabaseUrl = (rawUrl: string): string => {
-  if (!rawUrl) return OFFICIAL_SUPABASE_URL;
+  if (!rawUrl) return '';
   let url = rawUrl.trim();
   url = url.replace(/\/+$/, '');
   url = url.replace(/\/rest\/v1\/?$/, '').replace(/\/auth\/v1\/?$/, '');
-  return url || OFFICIAL_SUPABASE_URL;
+  return url;
 };
 
 export const getSupabaseUrl = (): string => {
@@ -33,7 +31,7 @@ export const getSupabaseUrl = (): string => {
   if (envUrl && envUrl.trim().length > 0) {
     return sanitizeSupabaseUrl(envUrl);
   }
-  return OFFICIAL_SUPABASE_URL;
+  return '';
 };
 
 export const getSupabaseAnonKey = (): string => {
@@ -43,8 +41,18 @@ export const getSupabaseAnonKey = (): string => {
   if (envKey && envKey.trim().length > 0) {
     return envKey.trim();
   }
-  return OFFICIAL_SUPABASE_PUBLISHABLE_KEY;
+  return '';
 };
+
+export const SUPABASE_PROJECT_ID = (() => {
+  const url = getSupabaseUrl();
+  const match = url.match(/https?:\/\/([^.]+)\.supabase\.co/);
+  return match ? match[1] : '';
+})();
+
+export const OFFICIAL_SUPABASE_URL = getSupabaseUrl();
+export const OFFICIAL_SUPABASE_REST_URL = getSupabaseUrl() ? `${getSupabaseUrl()}/rest/v1` : '';
+export const OFFICIAL_SUPABASE_PUBLISHABLE_KEY = getSupabaseAnonKey();
 
 export const isSupabaseConfigured = (): boolean => {
   const url = getSupabaseUrl();
@@ -66,8 +74,8 @@ let supabaseInstance: SupabaseClient | null = null;
 export const getSupabase = (): SupabaseClient => {
   if (!supabaseInstance) {
     const isConfigured = isSupabaseConfigured();
-    const url = getSupabaseUrl();
-    const key = isConfigured ? getSupabaseAnonKey() : OFFICIAL_SUPABASE_PUBLISHABLE_KEY;
+    const url = isConfigured ? getSupabaseUrl() : FALLBACK_URL;
+    const key = isConfigured ? getSupabaseAnonKey() : FALLBACK_KEY;
 
     supabaseInstance = createClient(url, key, {
       auth: {

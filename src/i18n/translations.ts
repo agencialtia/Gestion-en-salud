@@ -120,6 +120,17 @@ export const translations = {
     ingresarPrograma: 'Ingresar a programa',
     collapseSidebar: 'Ocultar menú lateral',
 
+    // Supabase Integration
+    supabaseIntegration: 'Integración con Supabase',
+    supabaseDesc: 'Base de datos PostgreSQL en la nube y sincronización en tiempo real',
+    supabaseConnected: 'Conectado a PostgreSQL Cloud',
+    supabaseDisconnected: 'Desconectado de Supabase',
+    supabaseSyncNow: 'Sincronizar Datos (Pull)',
+    supabasePushNow: 'Respaldar a Supabase (Push)',
+    supabaseTestConnection: 'Probar Conexión',
+    supabaseRealtimeActive: 'Realtime Activo',
+    supabaseTables: 'Tablas Sincronizadas',
+
     // Toasts & feedback
     languageChanged: 'Idioma cambiado a Español',
   },
@@ -229,6 +240,17 @@ export const translations = {
     ingresarPrograma: 'Acessar programa',
     collapseSidebar: 'Ocultar menu lateral',
 
+    // Supabase Integration
+    supabaseIntegration: 'Integração com Supabase',
+    supabaseDesc: 'Banco de dados PostgreSQL na nuvem e sincronização em tempo real',
+    supabaseConnected: 'Conectado ao PostgreSQL Cloud',
+    supabaseDisconnected: 'Desconectado do Supabase',
+    supabaseSyncNow: 'Sincronizar Dados (Pull)',
+    supabasePushNow: 'Fazer Backup no Supabase (Push)',
+    supabaseTestConnection: 'Testar Conexão',
+    supabaseRealtimeActive: 'Realtime Ativo',
+    supabaseTables: 'Tabelas Sincronizadas',
+
     // Toasts & feedback
     languageChanged: 'Idioma alterado para Português',
   },
@@ -337,6 +359,17 @@ export const translations = {
     abrir: 'Open',
     ingresarPrograma: 'Go to program',
     collapseSidebar: 'Collapse sidebar',
+
+    // Supabase Integration
+    supabaseIntegration: 'Supabase Integration',
+    supabaseDesc: 'Cloud PostgreSQL database and real-time synchronization',
+    supabaseConnected: 'Connected to PostgreSQL Cloud',
+    supabaseDisconnected: 'Disconnected from Supabase',
+    supabaseSyncNow: 'Sync Data (Pull)',
+    supabasePushNow: 'Backup to Supabase (Push)',
+    supabaseTestConnection: 'Test Connection',
+    supabaseRealtimeActive: 'Realtime Active',
+    supabaseTables: 'Synchronized Tables',
 
     // Toasts & feedback
     languageChanged: 'Language changed to English',
