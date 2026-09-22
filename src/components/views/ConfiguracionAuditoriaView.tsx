@@ -18,6 +18,25 @@ import {
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Establishment } from '../../types';
 
+const HEALTH_SERVICES_OPTIONS = [
+  'Servicio de Salud Metropolitano Norte',
+  'Servicio de Salud Metropolitano Central',
+  'Servicio de Salud Metropolitano Occidente',
+  'Servicio de Salud Metropolitano Oriente',
+  'Servicio de Salud Metropolitano Sur',
+  'Servicio de Salud Metropolitano Sur Oriente',
+  'Servicio de Salud Valparaíso San Antonio',
+  'Servicio de Salud Viña del Mar Quillota',
+  'Servicio de Salud Concepción',
+  'Otro Servicio de Salud',
+];
+
+const getNormalizedHealthService = (hs?: string) => {
+  if (!hs) return 'Servicio de Salud Metropolitano Norte';
+  if (hs === 'SSMN' || hs.includes('Metropolitano Norte')) return 'Servicio de Salud Metropolitano Norte';
+  return hs;
+};
+
 export const ConfiguracionAuditoriaView: React.FC = () => {
   const {
     currentUser,
@@ -32,6 +51,15 @@ export const ConfiguracionAuditoriaView: React.FC = () => {
     t,
   } = useApp();
 
+  const currentYear = new Date().getFullYear();
+  const budgetYearOptions = [
+    currentYear - 2,
+    currentYear - 1,
+    currentYear,
+    currentYear + 1,
+    currentYear + 2,
+  ].map(String);
+
   // User Profile Edit Modal
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({
@@ -41,8 +69,8 @@ export const ConfiguracionAuditoriaView: React.FC = () => {
     role: currentUser.role,
     comuna: currentUser.comuna || 'Quilicura (DISAM)',
     establishment: currentUser.establishment || 'Dirección de Salud / Comunal',
-    healthService: currentUser.healthService || 'SSMN (Metropolitano Norte)',
-    budgetYear: currentUser.budgetYear || '2026',
+    healthService: getNormalizedHealthService(currentUser.healthService),
+    budgetYear: currentUser.budgetYear ? String(currentUser.budgetYear) : String(currentYear),
   });
 
   // Establishment Edit Modal
@@ -69,8 +97,8 @@ export const ConfiguracionAuditoriaView: React.FC = () => {
       role: currentUser.role,
       comuna: currentUser.comuna || 'Quilicura (DISAM)',
       establishment: currentUser.establishment || 'Dirección de Salud / Comunal',
-      healthService: currentUser.healthService || 'SSMN (Metropolitano Norte)',
-      budgetYear: currentUser.budgetYear || '2026',
+      healthService: getNormalizedHealthService(currentUser.healthService),
+      budgetYear: currentUser.budgetYear ? String(currentUser.budgetYear) : String(currentYear),
     });
     setEditingProfile(true);
   };
@@ -257,11 +285,11 @@ export const ConfiguracionAuditoriaView: React.FC = () => {
             </div>
             <div className="flex justify-between items-center py-0.5">
               <span>Servicio de Salud:</span>
-              <strong className="text-slate-800 dark:text-slate-200">{currentUser.healthService || 'SSMN (Metropolitano Norte)'}</strong>
+              <strong className="text-slate-800 dark:text-slate-200">{getNormalizedHealthService(currentUser.healthService)}</strong>
             </div>
             <div className="flex justify-between items-center py-0.5">
               <span>Año Presupuestario:</span>
-              <strong className="text-slate-800 dark:text-slate-200">{currentUser.budgetYear || '2026'}</strong>
+              <strong className="text-slate-800 dark:text-slate-200">{currentUser.budgetYear || String(currentYear)}</strong>
             </div>
           </div>
         </div>
@@ -442,24 +470,38 @@ export const ConfiguracionAuditoriaView: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Servicio de Salud</label>
-                  <input
-                    type="text"
+                  <select
                     value={profileForm.healthService}
                     onChange={(e) => setProfileForm({ ...profileForm, healthService: e.target.value })}
-                    placeholder="Ej: SSMN (Metropolitano Norte)"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                  />
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    {HEALTH_SERVICES_OPTIONS.map((service) => (
+                      <option key={service} value={service}>
+                        {service}
+                      </option>
+                    ))}
+                    {!HEALTH_SERVICES_OPTIONS.includes(profileForm.healthService) && profileForm.healthService && (
+                      <option value={profileForm.healthService}>{profileForm.healthService}</option>
+                    )}
+                  </select>
                 </div>
 
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Año Presupuestario</label>
-                  <input
-                    type="text"
+                  <select
                     value={profileForm.budgetYear}
                     onChange={(e) => setProfileForm({ ...profileForm, budgetYear: e.target.value })}
-                    placeholder="Ej: 2026"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                  />
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    {budgetYearOptions.map((yearStr) => (
+                      <option key={yearStr} value={yearStr}>
+                        {yearStr} {yearStr === String(currentYear) ? '(Año en curso)' : ''}
+                      </option>
+                    ))}
+                    {!budgetYearOptions.includes(String(profileForm.budgetYear)) && profileForm.budgetYear && (
+                      <option value={profileForm.budgetYear}>{profileForm.budgetYear}</option>
+                    )}
+                  </select>
                 </div>
               </div>
 
