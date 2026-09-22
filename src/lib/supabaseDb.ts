@@ -15,6 +15,9 @@ import {
   Alert,
   HealthProgram,
   User,
+  Establishment,
+  FinancialPeriod,
+  BudgetComponent,
 } from '../types';
 
 export { SUPABASE_PROJECT_ID, OFFICIAL_SUPABASE_URL };
@@ -372,10 +375,14 @@ export function fromDbUser(row: any): User {
     avatar: row.avatar || (row.name ? row.name.charAt(0).toUpperCase() : 'U'),
     photoUrl: row.photo_url || undefined,
     phone: row.phone || undefined,
+    phonePrefix: row.phone_prefix || 'CL +56',
+    instagram: row.instagram || undefined,
+    country: row.country || 'Chile',
+    budgetYear: row.budget_year || '2026',
   };
 }
 
-export function toDbUser(u: Partial<User> & { id: string; email: string; name: string }): any {
+export function toDbUser(u: Partial<User> & { id: string; email?: string; name?: string }): any {
   return {
     id: u.id,
     name: u.name || '',
@@ -388,10 +395,15 @@ export function toDbUser(u: Partial<User> & { id: string; email: string; name: s
     avatar: u.avatar || (u.name ? u.name.charAt(0).toUpperCase() : 'U'),
     photo_url: u.photoUrl || null,
     phone: u.phone || null,
+    phone_prefix: u.phonePrefix || 'CL +56',
+    instagram: u.instagram || null,
+    country: u.country || 'Chile',
+    budget_year: u.budgetYear ? String(u.budgetYear) : '2026',
+    updated_at: new Date().toISOString(),
   };
 }
 
-export async function upsertUserInSupabase(user: Partial<User> & { id: string; email: string; name: string }): Promise<void> {
+export async function upsertUserInSupabase(user: Partial<User> & { id: string; email?: string; name?: string }): Promise<void> {
   if (!isSupabaseConfigured()) return;
   try {
     const payload = toDbUser(user);
@@ -403,9 +415,124 @@ export async function upsertUserInSupabase(user: Partial<User> & { id: string; e
     } else {
       console.log('Usuario guardado exitosamente en la tabla users:', user.email);
     }
+
+    // Sincronizar también la metadata del usuario en Supabase Auth
+    try {
+      await supabase.auth.updateUser({
+        data: {
+          full_name: payload.name,
+          name: payload.name,
+          role: payload.role,
+          title: payload.title,
+          phone: payload.phone,
+          phone_prefix: payload.phone_prefix,
+          comuna: payload.comuna,
+          establishment: payload.establishment,
+          health_service: payload.health_service,
+          instagram: payload.instagram,
+          country: payload.country,
+        },
+      });
+    } catch {
+      // Si no hay sesión activa o es un usuario externo, ignorar de forma segura
+    }
   } catch (err: any) {
     console.warn('upsertUserInSupabase error:', err?.message);
   }
+}
+
+// 10. Establishments
+export function fromDbEstablishment(row: any): Establishment {
+  return {
+    id: row.id,
+    name: row.name || '',
+    code: row.code || '',
+    type: row.type || 'CESFAM',
+    address: row.address || '',
+    director: row.director || '',
+    phone: row.phone || '',
+    email: row.email || '',
+  };
+}
+
+export function toDbEstablishment(e: Establishment): any {
+  return {
+    id: e.id,
+    name: e.name || '',
+    code: e.code || '',
+    type: e.type || 'CESFAM',
+    address: e.address || '',
+    director: e.director || '',
+    phone: e.phone || '',
+    email: e.email || '',
+    updated_at: new Date().toISOString(),
+  };
+}
+
+// 11. Financial Periods
+export function fromDbFinancialPeriod(row: any): FinancialPeriod {
+  return {
+    id: row.id,
+    programId: row.program_id,
+    month: row.month || '',
+    year: Number(row.year) || 2026,
+    periodName: row.period_name || '',
+    presupuestoAsignado: Number(row.presupuesto_asignado) || 0,
+    presupuestoEjecutado: Number(row.presupuesto_ejecutado) || 0,
+    presupuestoComprometido: Number(row.presupuesto_comprometido) || 0,
+    saldoDisponible: Number(row.saldo_disponible) || 0,
+    rendicionEnviada: Boolean(row.rendicion_enviada),
+    rendicionAprobada: Boolean(row.rendicion_aprobada),
+    fechaRendicion: row.fecha_rendicion || undefined,
+    observacionesRendicion: row.observaciones_rendicion || '',
+    createdAt: row.created_at || new Date().toISOString(),
+  };
+}
+
+export function toDbFinancialPeriod(f: FinancialPeriod): any {
+  return {
+    id: f.id,
+    program_id: f.programId || null,
+    month: f.month ? String(f.month) : '',
+    year: Number(f.year) || 2026,
+    period_name: f.periodName || '',
+    presupuesto_asignado: Number(f.presupuestoAsignado) || 0,
+    presupuesto_ejecutado: Number(f.presupuestoEjecutado) || 0,
+    presupuesto_comprometido: Number(f.presupuestoComprometido) || 0,
+    saldo_disponible: Number(f.saldoDisponible) || 0,
+    rendicion_enviada: Boolean(f.rendicionEnviada),
+    rendicion_aprobada: Boolean(f.rendicionAprobada),
+    fecha_rendicion: f.fechaRendicion || null,
+    observaciones_rendicion: f.observacionesRendicion || '',
+    updated_at: new Date().toISOString(),
+  };
+}
+
+// 12. Budget Components
+export function fromDbBudgetComponent(row: any): BudgetComponent {
+  return {
+    id: row.id,
+    programId: row.program_id,
+    name: row.name || '',
+    allocated: Number(row.allocated) || 0,
+    executed: Number(row.executed) || 0,
+    committed: Number(row.committed) || 0,
+    category: row.category || 'General',
+    createdAt: row.created_at || new Date().toISOString(),
+  };
+}
+
+export function toDbBudgetComponent(b: BudgetComponent): any {
+  return {
+    id: b.id,
+    program_id: b.programId || null,
+    name: b.name || '',
+    allocated: Number(b.allocated) || 0,
+    executed: Number(b.executed) || 0,
+    committed: Number(b.committed) || 0,
+    category: b.category || 'General',
+    updated_at: new Date().toISOString(),
+  };
 }
 
 /* ==========================================================================
@@ -570,6 +697,60 @@ export async function fetchUsersFromSupabase(): Promise<User[]> {
     return (data || []).map(fromDbUser);
   } catch (err: any) {
     console.warn('Fetch users failed safely:', err?.message);
+    return [];
+  }
+}
+
+export async function fetchEstablishmentsFromSupabase(): Promise<Establishment[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('establishments')
+      .select('*')
+      .order('name', { ascending: true });
+    if (error) {
+      console.warn('Supabase establishments not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbEstablishment);
+  } catch (err: any) {
+    console.warn('Fetch establishments failed safely:', err?.message);
+    return [];
+  }
+}
+
+export async function fetchFinancialPeriodsFromSupabase(): Promise<FinancialPeriod[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('financial_periods')
+      .select('*')
+      .order('year', { ascending: false });
+    if (error) {
+      console.warn('Supabase financial_periods not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbFinancialPeriod);
+  } catch (err: any) {
+    console.warn('Fetch financial periods failed safely:', err?.message);
+    return [];
+  }
+}
+
+export async function fetchBudgetComponentsFromSupabase(): Promise<BudgetComponent[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('budget_components')
+      .select('*')
+      .order('name', { ascending: true });
+    if (error) {
+      console.warn('Supabase budget_components not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbBudgetComponent);
+  } catch (err: any) {
+    console.warn('Fetch budget components failed safely:', err?.message);
     return [];
   }
 }
@@ -852,6 +1033,105 @@ export async function upsertProgramInSupabase(program: HealthProgram): Promise<H
   }
 }
 
+export async function upsertEstablishmentInSupabase(establishment: Establishment): Promise<Establishment> {
+  if (!isSupabaseConfigured()) return establishment;
+  try {
+    const payload = toDbEstablishment(establishment);
+    const { data, error } = await supabase
+      .from('establishments')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('Error upserting establishment in Supabase:', error.message);
+      return establishment;
+    }
+    return fromDbEstablishment(data);
+  } catch (err: any) {
+    console.warn('Establishment upsert skipped safely:', err?.message);
+    return establishment;
+  }
+}
+
+export async function deleteEstablishmentFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const { error } = await supabase.from('establishments').delete().eq('id', id);
+    if (error) {
+      console.warn('Error deleting establishment from Supabase:', error.message);
+    }
+  } catch (err: any) {
+    console.warn('Establishment delete skipped safely:', err?.message);
+  }
+}
+
+export async function upsertFinancialPeriodInSupabase(period: FinancialPeriod): Promise<FinancialPeriod> {
+  if (!isSupabaseConfigured()) return period;
+  try {
+    const payload = toDbFinancialPeriod(period);
+    const { data, error } = await supabase
+      .from('financial_periods')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('Error upserting financial period in Supabase:', error.message);
+      return period;
+    }
+    return fromDbFinancialPeriod(data);
+  } catch (err: any) {
+    console.warn('Financial period upsert skipped safely:', err?.message);
+    return period;
+  }
+}
+
+export async function deleteFinancialPeriodFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const { error } = await supabase.from('financial_periods').delete().eq('id', id);
+    if (error) {
+      console.warn('Error deleting financial period from Supabase:', error.message);
+    }
+  } catch (err: any) {
+    console.warn('Financial period delete skipped safely:', err?.message);
+  }
+}
+
+export async function upsertBudgetComponentInSupabase(component: BudgetComponent): Promise<BudgetComponent> {
+  if (!isSupabaseConfigured()) return component;
+  try {
+    const payload = toDbBudgetComponent(component);
+    const { data, error } = await supabase
+      .from('budget_components')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('Error upserting budget component in Supabase:', error.message);
+      return component;
+    }
+    return fromDbBudgetComponent(data);
+  } catch (err: any) {
+    console.warn('Budget component upsert skipped safely:', err?.message);
+    return component;
+  }
+}
+
+export async function deleteBudgetComponentFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const { error } = await supabase.from('budget_components').delete().eq('id', id);
+    if (error) {
+      console.warn('Error deleting budget component from Supabase:', error.message);
+    }
+  } catch (err: any) {
+    console.warn('Budget component delete skipped safely:', err?.message);
+  }
+}
+
 /* ==========================================================================
    HEALTH & DIAGNOSTICS
    ========================================================================== */
@@ -892,6 +1172,9 @@ export async function checkSupabaseDatabaseStatus(): Promise<SupabaseDbStatus> {
     'questions',
     'alerts',
     'users',
+    'establishments',
+    'financial_periods',
+    'budget_components',
   ];
 
   const tableResults: Record<string, { count: number; ok: boolean; error?: string }> = {};
@@ -950,6 +1233,9 @@ export async function pullAllFromSupabase(): Promise<{
   questions: Question[];
   alerts: Alert[];
   users: User[];
+  establishments: Establishment[];
+  financialPeriods: FinancialPeriod[];
+  budgetComponents: BudgetComponent[];
 }> {
   if (!isSupabaseConfigured()) {
     return {
@@ -962,6 +1248,9 @@ export async function pullAllFromSupabase(): Promise<{
       questions: [],
       alerts: [],
       users: [],
+      establishments: [],
+      financialPeriods: [],
+      budgetComponents: [],
     };
   }
 
@@ -975,6 +1264,9 @@ export async function pullAllFromSupabase(): Promise<{
     questions,
     alerts,
     users,
+    establishments,
+    financialPeriods,
+    budgetComponents,
   ] = await Promise.all([
     fetchHealthProgramsFromSupabase().catch(() => []),
     fetchTasksFromSupabase().catch(() => []),
@@ -985,6 +1277,9 @@ export async function pullAllFromSupabase(): Promise<{
     fetchQuestionsFromSupabase().catch(() => []),
     fetchAlertsFromSupabase().catch(() => []),
     fetchUsersFromSupabase().catch(() => []),
+    fetchEstablishmentsFromSupabase().catch(() => []),
+    fetchFinancialPeriodsFromSupabase().catch(() => []),
+    fetchBudgetComponentsFromSupabase().catch(() => []),
   ]);
 
   return {
@@ -997,6 +1292,9 @@ export async function pullAllFromSupabase(): Promise<{
     questions,
     alerts,
     users,
+    establishments,
+    financialPeriods,
+    budgetComponents,
   };
 }
 
@@ -1013,6 +1311,9 @@ export async function pushAllToSupabase(data: {
   questions?: Question[];
   alerts?: Alert[];
   programs?: HealthProgram[];
+  establishments?: Establishment[];
+  financialPeriods?: FinancialPeriod[];
+  budgetComponents?: BudgetComponent[];
 }): Promise<{ success: boolean; errors: string[]; insertedCount: number }> {
   if (!isSupabaseConfigured()) {
     return {
@@ -1098,6 +1399,39 @@ export async function pushAllToSupabase(data: {
         insertedCount++;
       } catch (err: any) {
         errors.push(`Error al subir pregunta ${q.question}: ${err?.message}`);
+      }
+    }
+  }
+
+  if (data.establishments && data.establishments.length > 0) {
+    for (const e of data.establishments) {
+      try {
+        await upsertEstablishmentInSupabase(e);
+        insertedCount++;
+      } catch (err: any) {
+        errors.push(`Error al subir establecimiento ${e.name}: ${err?.message}`);
+      }
+    }
+  }
+
+  if (data.financialPeriods && data.financialPeriods.length > 0) {
+    for (const f of data.financialPeriods) {
+      try {
+        await upsertFinancialPeriodInSupabase(f);
+        insertedCount++;
+      } catch (err: any) {
+        errors.push(`Error al subir período financiero ${f.periodName || f.id}: ${err?.message}`);
+      }
+    }
+  }
+
+  if (data.budgetComponents && data.budgetComponents.length > 0) {
+    for (const b of data.budgetComponents) {
+      try {
+        await upsertBudgetComponentInSupabase(b);
+        insertedCount++;
+      } catch (err: any) {
+        errors.push(`Error al subir componente presupuestario ${b.name}: ${err?.message}`);
       }
     }
   }

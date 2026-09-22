@@ -125,6 +125,15 @@ import {
   deleteContactFromSupabase,
   upsertQuestionInSupabase,
   deleteQuestionFromSupabase,
+  upsertAlertInSupabase,
+  deleteAlertFromSupabase,
+  upsertProgramInSupabase,
+  upsertEstablishmentInSupabase,
+  deleteEstablishmentFromSupabase,
+  upsertFinancialPeriodInSupabase,
+  deleteFinancialPeriodFromSupabase,
+  upsertBudgetComponentInSupabase,
+  deleteBudgetComponentFromSupabase,
   upsertUserInSupabase,
   generateUUID,
   SupabaseDbStatus,
@@ -179,6 +188,7 @@ interface AppContextType {
   resendVerificationLink: (email: string) => Promise<{ success: boolean; error?: string; verificationCode?: string }>;
   sendPasswordResetLink: (email: string) => Promise<{ success: boolean; error?: string; resetToken?: string }>;
   resetUserPassword: (newPassword: string, email?: string, token?: string) => Promise<{ success: boolean; error?: string }>;
+  changeUserPassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 
   // Master data
@@ -1630,6 +1640,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return { success: true };
   };
 
+  const changeUserPassword = async (newPassword: string): Promise<{ success: boolean; error?: string }> => {
+    if (!newPassword || newPassword.length < 8) {
+      const err = 'La nueva contraseña debe tener al menos 8 caracteres.';
+      showToast(err, 'error');
+      return { success: false, error: err };
+    }
+
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = getSupabase();
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) {
+          showToast(`Error al cambiar contraseña: ${error.message}`, 'error');
+          return { success: false, error: error.message };
+        }
+      } catch (err: any) {
+        console.warn('Error changing password in Supabase:', err?.message);
+        showToast(err?.message || 'Error al cambiar contraseña', 'error');
+        return { success: false, error: err?.message };
+      }
+    }
+
+    // Also update registered accounts cache if exists
+    if (currentUser.email) {
+      setRegisteredAccounts((prev) =>
+        prev.map((a) =>
+          a.email.toLowerCase() === currentUser.email.toLowerCase()
+            ? { ...a, passwordHash: newPassword }
+            : a
+        )
+      );
+    }
+
+    showToast('¡Contraseña actualizada exitosamente en Supabase!', 'success');
+    return { success: true };
+  };
+
   const logout = async () => {
     if (isSupabaseConfigured()) {
       try {
@@ -1652,6 +1699,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
 
   const updateCurrentUser = (updates: Partial<User>) => {
+    let nextUserToPersist: User = currentUser;
     setCurrentUser((prev) => {
       let avatar = prev.avatar;
       if (updates.name && (!updates.avatar || updates.avatar === prev.avatar)) {
@@ -1663,6 +1711,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       }
       const nextUser = { ...prev, ...updates, ...(avatar ? { avatar } : {}) };
+      nextUserToPersist = nextUser;
       try {
         localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(nextUser));
       } catch (e) {
@@ -1670,12 +1719,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       return nextUser;
     });
+
+    // Also update registered accounts cache if exists
+    if (nextUserToPersist.email) {
+      setRegisteredAccounts((prev) =>
+        prev.map((a) =>
+          a.email.toLowerCase() === nextUserToPersist.email.toLowerCase()
+            ? { ...a, name: nextUserToPersist.name, role: nextUserToPersist.role, title: nextUserToPersist.title }
+            : a
+        )
+      );
+    }
+
+    // Background sync to Supabase (public.users & auth user_metadata)
+    if (isSupabaseConfigured()) {
+      upsertUserInSupabase(nextUserToPersist).catch((err) => {
+        console.warn('Failed to upsert user in Supabase:', err?.message);
+      });
+    }
+
     showToast('Perfil de usuario actualizado exitosamente', 'success');
   };
 
   const updateEstablishment = (id: string, updates: Partial<Establishment>) => {
+    let updatedEst: Establishment | undefined;
     setEstablishments((prev) => {
-      const next = prev.map((e) => (e.id === id ? { ...e, ...updates } : e));
+      const next = prev.map((e) => {
+        if (e.id === id) {
+          updatedEst = { ...e, ...updates };
+          return updatedEst;
+        }
+        return e;
+      });
       try {
         localStorage.setItem(`${STORAGE_KEY}_establishments`, JSON.stringify(next));
       } catch (err) {
@@ -1683,6 +1758,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       return next;
     });
+
+    if (updatedEst && isSupabaseConfigured()) {
+      upsertEstablishmentInSupabase(updatedEst).catch((err) =>
+        console.warn('Error syncing establishment update to Supabase:', err?.message)
+      );
+    }
+
     showToast('Establecimiento actualizado exitosamente', 'success');
   };
 
@@ -1700,6 +1782,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       return next;
     });
+
+    if (isSupabaseConfigured()) {
+      upsertEstablishmentInSupabase(newEst).catch((err) =>
+        console.warn('Error syncing new establishment to Supabase:', err?.message)
+      );
+    }
+
     showToast(`Establecimiento "${newEst.name}" agregado`, 'success');
     return newEst;
   };
@@ -1714,6 +1803,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       return next;
     });
+
+    if (isSupabaseConfigured()) {
+      deleteEstablishmentFromSupabase(id).catch((err) =>
+        console.warn('Error deleting establishment from Supabase:', err?.message)
+      );
+    }
+
     showToast('Establecimiento eliminado', 'warning');
   };
 
@@ -2192,6 +2288,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return Array.from(map.values());
           });
         }
+        if (data.establishments && data.establishments.length > 0) {
+          setEstablishments((prev) => {
+            const map = new Map(prev.map((e) => [e.id, e]));
+            data.establishments.forEach((e) => map.set(e.id, e));
+            return Array.from(map.values());
+          });
+        }
+        if (data.financialPeriods && data.financialPeriods.length > 0) {
+          setFinancialPeriods((prev) => {
+            const map = new Map(prev.map((f) => [f.id, f]));
+            data.financialPeriods.forEach((f) => map.set(f.id, f));
+            return Array.from(map.values());
+          });
+        }
+        if (data.budgetComponents && data.budgetComponents.length > 0) {
+          setBudgetComponents((prev) => {
+            const map = new Map(prev.map((b) => [b.id, b]));
+            data.budgetComponents.forEach((b) => map.set(b.id, b));
+            return Array.from(map.values());
+          });
+        }
       }
 
       const nowIso = new Date().toISOString();
@@ -2224,6 +2341,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         indicators,
         contacts,
         questions,
+        establishments,
+        financialPeriods,
+        budgetComponents,
       });
       if (res.success) {
         setSupabaseSyncState('synced');
@@ -2238,7 +2358,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       showToast('Error al respaldar datos en la nube', 'error');
       return { success: false, errors: [err?.message || 'Error desconocido'], insertedCount: 0 };
     }
-  }, [programs, tasks, purchases, meetings, indicators, contacts, questions]);
+  }, [programs, tasks, purchases, meetings, indicators, contacts, questions, establishments, financialPeriods, budgetComponents]);
 
   // Initial database sync and real-time subscription
   useEffect(() => {
@@ -2306,6 +2426,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             setQuestions((prev) => {
               const map = new Map(prev.map((q) => [q.id, q]));
               data.questions.forEach((q) => map.set(q.id, q));
+              return Array.from(map.values());
+            });
+          }
+          if (data.establishments?.length) {
+            setEstablishments((prev) => {
+              const map = new Map(prev.map((e) => [e.id, e]));
+              data.establishments.forEach((e) => map.set(e.id, e));
+              return Array.from(map.values());
+            });
+          }
+          if (data.financialPeriods?.length) {
+            setFinancialPeriods((prev) => {
+              const map = new Map(prev.map((f) => [f.id, f]));
+              data.financialPeriods.forEach((f) => map.set(f.id, f));
+              return Array.from(map.values());
+            });
+          }
+          if (data.budgetComponents?.length) {
+            setBudgetComponents((prev) => {
+              const map = new Map(prev.map((b) => [b.id, b]));
+              data.budgetComponents.forEach((b) => map.set(b.id, b));
               return Array.from(map.values());
             });
           }
@@ -3188,9 +3329,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateFinancialPeriod = (id: string, updates: Partial<FinancialPeriod>) => {
+    let updatedItem: FinancialPeriod | undefined;
     setFinancialPeriods((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, ...updates, updatedAt: new Date().toISOString() } : f))
+      prev.map((f) => {
+        if (f.id === id) {
+          updatedItem = { ...f, ...updates, updatedAt: new Date().toISOString() };
+          return updatedItem;
+        }
+        return f;
+      })
     );
+    if (updatedItem && isSupabaseConfigured()) {
+      upsertFinancialPeriodInSupabase(updatedItem).catch((err) =>
+        console.warn('Error syncing financial period to Supabase:', err?.message)
+      );
+    }
     logAudit('Finanzas', id, 'editar', `Actualización presupuestaria en período ID ${id}`);
     showToast('Balance financiero actualizado y saldos recalculados', 'success');
   };
@@ -3203,12 +3356,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       updatedAt: new Date().toISOString(),
     };
     setFinancialPeriods((prev) => [newFin, ...prev]);
+    if (isSupabaseConfigured()) {
+      upsertFinancialPeriodInSupabase(newFin).catch((err) =>
+        console.warn('Error syncing new financial period to Supabase:', err?.message)
+      );
+    }
     logAudit('Finanzas', newFin.id, 'crear', `Nuevo período financiero para ${newFin.programId}`);
     showToast('Período financiero creado', 'success');
   };
 
   const deleteFinancialPeriod = (id: string) => {
     setFinancialPeriods((prev) => prev.filter((f) => f.id !== id));
+    if (isSupabaseConfigured()) {
+      deleteFinancialPeriodFromSupabase(id).catch((err) =>
+        console.warn('Error deleting financial period from Supabase:', err?.message)
+      );
+    }
     logAudit('Finanzas', id, 'eliminar_logico', `Partida presupuestaria ID ${id} eliminada`);
     showToast('Partida presupuestaria eliminada', 'warning');
   };
@@ -3221,21 +3384,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       updatedAt: new Date().toISOString(),
     };
     setBudgetComponents((prev) => [...prev, newComp]);
+    if (isSupabaseConfigured()) {
+      upsertBudgetComponentInSupabase(newComp).catch((err) =>
+        console.warn('Error syncing budget component to Supabase:', err?.message)
+      );
+    }
     logAudit('Finanzas', newComp.id, 'crear', `Nuevo componente presupuestario ${newComp.name} para ${newComp.programId}`);
     showToast(`Componente "${newComp.name}" agregado exitosamente`, 'success');
     return newComp;
   };
 
   const updateBudgetComponent = (id: string, updates: Partial<BudgetComponent>) => {
+    let updatedComp: BudgetComponent | undefined;
     setBudgetComponents((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c))
+      prev.map((c) => {
+        if (c.id === id) {
+          updatedComp = { ...c, ...updates, updatedAt: new Date().toISOString() };
+          return updatedComp;
+        }
+        return c;
+      })
     );
+    if (updatedComp && isSupabaseConfigured()) {
+      upsertBudgetComponentInSupabase(updatedComp).catch((err) =>
+        console.warn('Error syncing budget component update to Supabase:', err?.message)
+      );
+    }
     logAudit('Finanzas', id, 'editar', `Componente presupuestario ID ${id} actualizado`);
     showToast('Componente presupuestario actualizado', 'success');
   };
 
   const deleteBudgetComponent = (id: string) => {
     setBudgetComponents((prev) => prev.filter((c) => c.id !== id));
+    if (isSupabaseConfigured()) {
+      deleteBudgetComponentFromSupabase(id).catch((err) =>
+        console.warn('Error deleting budget component from Supabase:', err?.message)
+      );
+    }
     logAudit('Finanzas', id, 'eliminar_logico', `Componente presupuestario ID ${id} eliminado`);
     showToast('Componente presupuestario eliminado', 'warning');
   };
@@ -4811,6 +4996,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     setBudgetComponents((prev) => [baseBudgetPersonal, baseBudgetBienes, ...prev]);
 
+    if (isSupabaseConfigured()) {
+      upsertProgramInSupabase(newProg).catch((err) =>
+        console.warn('Error syncing new program to Supabase:', err?.message)
+      );
+    }
+
     logAudit('Programa', newProg.id, 'crear', `Nuevo programa creado: ${newProg.name} (${newProg.code})`);
     showToast(`Programa "${newProg.shortName}" creado exitosamente`, 'success');
     return newProg;
@@ -4823,9 +5014,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateProgram = (id: string, updates: Partial<HealthProgram>) => {
+    let updatedProg: HealthProgram | undefined;
     setPrograms((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...updates } : p))
+      prev.map((p) => {
+        if (p.id === id) {
+          updatedProg = { ...p, ...updates };
+          return updatedProg;
+        }
+        return p;
+      })
     );
+    if (updatedProg && isSupabaseConfigured()) {
+      upsertProgramInSupabase(updatedProg).catch((err) =>
+        console.warn('Error syncing program update to Supabase:', err?.message)
+      );
+    }
     logAudit('Programa', id, 'editar', `Modificación en programa ${id}`);
     showToast('Descripción del programa actualizada correctamente', 'success');
   };
@@ -5029,6 +5232,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         resendVerificationLink,
         sendPasswordResetLink,
         resetUserPassword,
+        changeUserPassword,
         logout,
         currentUser,
         establishments,
