@@ -136,6 +136,7 @@ import {
   upsertBudgetComponentInSupabase,
   deleteBudgetComponentFromSupabase,
   upsertUserInSupabase,
+  fetchUserByIdOrEmailFromSupabase,
   generateUUID,
   SupabaseDbStatus,
 } from '../lib/supabaseDb';
@@ -697,31 +698,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             setAuthScreen('login');
             showToast('El enlace de confirmación ha expirado o ya fue utilizado.', 'error');
           } else if (data?.user) {
+            const dbUser = await fetchUserByIdOrEmailFromSupabase(data.user.id, data.user.email);
             const userMeta = data.user.user_metadata || {};
-            const fullName = userMeta.full_name || userMeta.name || data.user.email?.split('@')[0] || 'Usuario';
+            const fullName = dbUser?.name || userMeta.full_name || userMeta.name || data.user.email?.split('@')[0] || 'Usuario';
             const parts = fullName.trim().split(/\s+/);
             const avatar =
-              parts.length >= 2
+              dbUser?.avatar ||
+              (parts.length >= 2
                 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-                : fullName.substring(0, 2).toUpperCase();
+                : fullName.substring(0, 2).toUpperCase());
 
             const loggedUser: User = {
               id: data.user.id,
               name: fullName,
-              email: data.user.email || '',
-              role: userMeta.role || 'referente',
-              title: userMeta.title || 'Referente Técnico de Programas',
-              comuna: userMeta.comuna || 'Quilicura (DISAM)',
-              establishment: userMeta.establishment || 'Dirección de Salud / Comunal',
-              healthService: userMeta.healthService || 'SSMN (Metropolitano Norte)',
+              email: dbUser?.email || data.user.email || '',
+              role: dbUser?.role || userMeta.role || 'referente',
+              title: dbUser?.title || userMeta.title || 'Referente Técnico de Programas',
+              comuna: dbUser?.comuna || userMeta.comuna || 'Quilicura (DISAM)',
+              establishment: dbUser?.establishment || userMeta.establishment || 'Dirección de Salud / Comunal',
+              healthService: dbUser?.healthService || userMeta.healthService || 'SSMN (Metropolitano Norte)',
               avatar,
+              photoUrl: dbUser?.photoUrl || userMeta.photo_url,
+              phone: dbUser?.phone || userMeta.phone,
+              phonePrefix: dbUser?.phonePrefix || userMeta.phone_prefix || 'CL +56',
+              instagram: dbUser?.instagram || userMeta.instagram,
+              country: dbUser?.country || userMeta.country || 'Chile',
+              budgetYear: dbUser?.budgetYear || userMeta.budget_year || '2026',
               authProvider: (data.user.app_metadata?.provider as any) || 'email',
               emailVerified: true,
             };
 
             setCurrentUser(loggedUser);
             setIsAuthenticated(true);
-            upsertUserInSupabase(loggedUser).catch((err) => console.warn('Sync user on callback error:', err));
+            if (!dbUser) {
+              upsertUserInSupabase(loggedUser).catch((err) => console.warn('Sync user on callback error:', err));
+            }
             try {
               localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(loggedUser));
               localStorage.setItem('quilicura_is_authenticated', 'true');
@@ -768,30 +779,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           const { data: sessionData } = await supabase.auth.getSession();
           if (sessionData?.session?.user) {
             const user = sessionData.session.user;
+            const dbUser = await fetchUserByIdOrEmailFromSupabase(user.id, user.email);
             const userMeta = user.user_metadata || {};
-            const fullName = userMeta.full_name || userMeta.name || user.email?.split('@')[0] || 'Usuario';
+            const fullName = dbUser?.name || userMeta.full_name || userMeta.name || user.email?.split('@')[0] || 'Usuario';
             const parts = fullName.trim().split(/\s+/);
             const avatar =
-              parts.length >= 2
+              dbUser?.avatar ||
+              (parts.length >= 2
                 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-                : fullName.substring(0, 2).toUpperCase();
+                : fullName.substring(0, 2).toUpperCase());
 
             const activeUser: User = {
               id: user.id,
               name: fullName,
-              email: user.email || '',
-              role: userMeta.role || 'referente',
-              title: userMeta.title || 'Referente Técnico de Programas',
-              comuna: userMeta.comuna || 'Quilicura (DISAM)',
-              establishment: userMeta.establishment || 'Dirección de Salud / Comunal',
-              healthService: userMeta.healthService || 'SSMN (Metropolitano Norte)',
+              email: dbUser?.email || user.email || '',
+              role: dbUser?.role || userMeta.role || 'referente',
+              title: dbUser?.title || userMeta.title || 'Referente Técnico de Programas',
+              comuna: dbUser?.comuna || userMeta.comuna || 'Quilicura (DISAM)',
+              establishment: dbUser?.establishment || userMeta.establishment || 'Dirección de Salud / Comunal',
+              healthService: dbUser?.healthService || userMeta.healthService || 'SSMN (Metropolitano Norte)',
               avatar,
+              photoUrl: dbUser?.photoUrl || userMeta.photo_url,
+              phone: dbUser?.phone || userMeta.phone,
+              phonePrefix: dbUser?.phonePrefix || userMeta.phone_prefix || 'CL +56',
+              instagram: dbUser?.instagram || userMeta.instagram,
+              country: dbUser?.country || userMeta.country || 'Chile',
+              budgetYear: dbUser?.budgetYear || userMeta.budget_year || '2026',
               authProvider: (user.app_metadata?.provider as any) || 'email',
               emailVerified: Boolean(user.email_confirmed_at || user.confirmed_at),
             };
 
             setCurrentUser(activeUser);
             setIsAuthenticated(true);
+            try {
+              localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(activeUser));
+              localStorage.setItem('quilicura_is_authenticated', 'true');
+            } catch (e) {
+              console.error(e);
+            }
           }
         } catch (e) {
           console.error('Error fetching Supabase session:', e);
@@ -800,31 +825,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
           if (event === 'SIGNED_IN' && session?.user) {
             const user = session.user;
+            const dbUser = await fetchUserByIdOrEmailFromSupabase(user.id, user.email);
             const userMeta = user.user_metadata || {};
-            const fullName = userMeta.full_name || userMeta.name || user.email?.split('@')[0] || 'Usuario';
+            const fullName = dbUser?.name || userMeta.full_name || userMeta.name || user.email?.split('@')[0] || 'Usuario';
             const parts = fullName.trim().split(/\s+/);
             const avatar =
-              parts.length >= 2
+              dbUser?.avatar ||
+              (parts.length >= 2
                 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-                : fullName.substring(0, 2).toUpperCase();
+                : fullName.substring(0, 2).toUpperCase());
 
             const loggedUser: User = {
               id: user.id,
               name: fullName,
-              email: user.email || '',
-              role: userMeta.role || 'referente',
-              title: userMeta.title || 'Referente Técnico de Programas',
-              comuna: userMeta.comuna || 'Quilicura (DISAM)',
-              establishment: userMeta.establishment || 'Dirección de Salud / Comunal',
-              healthService: userMeta.healthService || 'SSMN (Metropolitano Norte)',
+              email: dbUser?.email || user.email || '',
+              role: dbUser?.role || userMeta.role || 'referente',
+              title: dbUser?.title || userMeta.title || 'Referente Técnico de Programas',
+              comuna: dbUser?.comuna || userMeta.comuna || 'Quilicura (DISAM)',
+              establishment: dbUser?.establishment || userMeta.establishment || 'Dirección de Salud / Comunal',
+              healthService: dbUser?.healthService || userMeta.healthService || 'SSMN (Metropolitano Norte)',
               avatar,
+              photoUrl: dbUser?.photoUrl || userMeta.photo_url,
+              phone: dbUser?.phone || userMeta.phone,
+              phonePrefix: dbUser?.phonePrefix || userMeta.phone_prefix || 'CL +56',
+              instagram: dbUser?.instagram || userMeta.instagram,
+              country: dbUser?.country || userMeta.country || 'Chile',
+              budgetYear: dbUser?.budgetYear || userMeta.budget_year || '2026',
               authProvider: (user.app_metadata?.provider as any) || 'email',
               emailVerified: Boolean(user.email_confirmed_at || user.confirmed_at),
             };
 
             setCurrentUser(loggedUser);
             setIsAuthenticated(true);
-            upsertUserInSupabase(loggedUser).catch((err) => console.warn('Sync user on SIGNED_IN error:', err));
+            if (!dbUser) {
+              upsertUserInSupabase(loggedUser).catch((err) => console.warn('Sync user on SIGNED_IN error:', err));
+            }
             try {
               localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(loggedUser));
               localStorage.setItem('quilicura_is_authenticated', 'true');
@@ -833,8 +868,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             }
           } else if (event === 'SIGNED_OUT') {
             setIsAuthenticated(false);
+            setCurrentUser(CURRENT_USER);
             try {
               localStorage.setItem('quilicura_is_authenticated', 'false');
+              localStorage.removeItem(`${STORAGE_KEY}_current_user`);
             } catch (e) {
               console.error(e);
             }
@@ -924,29 +961,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
 
         if (data?.user) {
+          const dbUser = await fetchUserByIdOrEmailFromSupabase(data.user.id, data.user.email || cleanId);
           const userMeta = data.user.user_metadata || {};
-          const fullName = userMeta.full_name || userMeta.name || data.user.email?.split('@')[0] || 'Usuario';
+          const fullName = dbUser?.name || userMeta.full_name || userMeta.name || data.user.email?.split('@')[0] || 'Usuario';
           const parts = fullName.trim().split(/\s+/);
           const avatar =
-            parts.length >= 2
+            dbUser?.avatar ||
+            (parts.length >= 2
               ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-              : fullName.substring(0, 2).toUpperCase();
+              : fullName.substring(0, 2).toUpperCase());
 
           const userToSet: User = {
             id: data.user.id,
             name: fullName,
-            email: data.user.email || cleanId,
-            role: userMeta.role || 'referente',
-            title: userMeta.title || 'Referente Técnico de Programas',
-            comuna: userMeta.comuna || 'Quilicura (DISAM)',
-            establishment: userMeta.establishment || 'Dirección de Salud / Comunal',
-            healthService: userMeta.healthService || 'SSMN (Metropolitano Norte)',
+            email: dbUser?.email || data.user.email || cleanId,
+            role: dbUser?.role || userMeta.role || 'referente',
+            title: dbUser?.title || userMeta.title || 'Referente Técnico de Programas',
+            comuna: dbUser?.comuna || userMeta.comuna || 'Quilicura (DISAM)',
+            establishment: dbUser?.establishment || userMeta.establishment || 'Dirección de Salud / Comunal',
+            healthService: dbUser?.healthService || userMeta.healthService || 'SSMN (Metropolitano Norte)',
             avatar,
+            photoUrl: dbUser?.photoUrl || userMeta.photo_url,
+            phone: dbUser?.phone || userMeta.phone,
+            phonePrefix: dbUser?.phonePrefix || userMeta.phone_prefix || 'CL +56',
+            instagram: dbUser?.instagram || userMeta.instagram,
+            country: dbUser?.country || userMeta.country || 'Chile',
+            budgetYear: dbUser?.budgetYear || userMeta.budget_year || '2026',
             authProvider: 'email',
             emailVerified: Boolean(data.user.email_confirmed_at || data.user.confirmed_at),
           };
 
-          upsertUserInSupabase(userToSet).catch((err) => console.warn('Sync user error on login:', err));
+          if (!dbUser) {
+            upsertUserInSupabase(userToSet).catch((err) => console.warn('Sync user error on login:', err));
+          }
 
           setCurrentUser(userToSet);
           try {
@@ -999,6 +1046,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       healthService: account.healthService || 'SSMN (Metropolitano Norte)',
       avatar: account.avatar || account.name.substring(0, 2).toUpperCase(),
       photoUrl: account.photoUrl,
+      phone: account.phone,
+      phonePrefix: account.phonePrefix || 'CL +56',
+      instagram: account.instagram,
+      country: account.country || 'Chile',
+      budgetYear: account.budgetYear || '2026',
       authProvider: account.authProvider || 'email',
       emailVerified: true,
     };
@@ -1689,8 +1741,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     setIsAuthenticated(false);
+    setCurrentUser(CURRENT_USER);
     try {
       localStorage.setItem('quilicura_is_authenticated', 'false');
+      localStorage.removeItem(`${STORAGE_KEY}_current_user`);
     } catch (e) {
       console.error(e);
     }
@@ -1725,15 +1779,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     // Also update registered accounts cache if exists
-    if (nextUser.email) {
-      setRegisteredAccounts((prev) =>
-        prev.map((a) =>
-          a.email.toLowerCase() === nextUser.email.toLowerCase()
-            ? { ...a, name: nextUser.name, role: nextUser.role, title: nextUser.title }
-            : a
-        )
-      );
-    }
+    const prevEmail = currentUser.email?.toLowerCase();
+    const newEmail = nextUser.email?.toLowerCase();
+    setRegisteredAccounts((prev) => {
+      const updated = prev.map((a) => {
+        const matches =
+          (prevEmail && a.email.toLowerCase() === prevEmail) ||
+          (newEmail && a.email.toLowerCase() === newEmail) ||
+          (a.id && nextUser.id && a.id === nextUser.id);
+        if (matches) {
+          return {
+            ...a,
+            name: nextUser.name,
+            email: nextUser.email,
+            role: nextUser.role,
+            title: nextUser.title,
+            phone: nextUser.phone,
+            phonePrefix: nextUser.phonePrefix,
+            instagram: nextUser.instagram,
+            country: nextUser.country,
+            photoUrl: nextUser.photoUrl,
+            avatar: nextUser.avatar,
+            budgetYear: nextUser.budgetYear,
+          };
+        }
+        return a;
+      });
+      try {
+        localStorage.setItem('quilicura_auth_accounts', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      return updated;
+    });
 
     // Direct sync to Supabase (public.users & auth user_metadata)
     let syncResult: { success: boolean; error?: string } = { success: true };

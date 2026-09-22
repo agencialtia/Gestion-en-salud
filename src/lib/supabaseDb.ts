@@ -407,49 +407,104 @@ export function toDbUser(u: Partial<User> & { id: string; email?: string; name?:
   };
 }
 
+export async function fetchUserByIdOrEmailFromSupabase(id?: string, email?: string): Promise<User | null> {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    if (id) {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (!error && data) {
+        return fromDbUser(data);
+      }
+    }
+    if (email) {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email.toLowerCase().trim())
+        .maybeSingle();
+      if (!error && data) {
+        return fromDbUser(data);
+      }
+    }
+    return null;
+  } catch (err: any) {
+    console.warn('fetchUserByIdOrEmailFromSupabase error:', err?.message);
+    return null;
+  }
+}
+
 export async function upsertUserInSupabase(user: Partial<User> & { id?: string; email?: string; name?: string }): Promise<{ success: boolean; error?: string }> {
   if (!isSupabaseConfigured()) return { success: true };
   try {
     let authUid: string | undefined;
+    let authEmail: string | undefined;
     try {
       const { data: authData } = await supabase.auth.getUser();
       authUid = authData?.user?.id;
+      authEmail = authData?.user?.email;
     } catch {
       // Sin sesión activa
     }
 
     const resolvedId = authUid || user.id || 'user_' + Date.now();
-    const payload = toDbUser({
-      ...user,
+    const resolvedEmail = (user.email || authEmail || '').toLowerCase().trim();
+
+    // Check if the record already exists in Supabase users to merge without losing existing fields
+    let existingDbUser: any = null;
+    try {
+      if (resolvedId) {
+        const { data: foundById } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', resolvedId)
+          .maybeSingle();
+        if (foundById) existingDbUser = foundById;
+      }
+      if (!existingDbUser && resolvedEmail) {
+        const { data: foundByEmail } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', resolvedEmail)
+          .maybeSingle();
+        if (foundByEmail) existingDbUser = foundByEmail;
+      }
+    } catch {
+      // ignore
+    }
+
+    const payload: any = {
       id: resolvedId,
-    });
+      name: user.name !== undefined ? user.name : (existingDbUser?.name || ''),
+      email: resolvedEmail,
+      role: user.role !== undefined ? user.role : (existingDbUser?.role || 'referente'),
+      title: user.title !== undefined ? user.title : (existingDbUser?.title || 'Referente de Programas de Salud'),
+      comuna: user.comuna !== undefined ? user.comuna : (existingDbUser?.comuna || 'Quilicura (DISAM)'),
+      establishment: user.establishment !== undefined ? user.establishment : (existingDbUser?.establishment || 'Dirección de Salud / Comunal'),
+      health_service: user.healthService !== undefined ? user.healthService : (existingDbUser?.health_service || 'SSMN (Metropolitano Norte)'),
+      avatar: user.avatar !== undefined ? user.avatar : (existingDbUser?.avatar || (user.name ? user.name.charAt(0).toUpperCase() : 'U')),
+      photo_url: user.photoUrl !== undefined ? user.photoUrl : (existingDbUser?.photo_url || null),
+      phone: user.phone !== undefined ? user.phone : (existingDbUser?.phone || null),
+      phone_prefix: user.phonePrefix !== undefined ? user.phonePrefix : (existingDbUser?.phone_prefix || 'CL +56'),
+      instagram: user.instagram !== undefined ? user.instagram : (existingDbUser?.instagram || null),
+      country: user.country !== undefined ? user.country : (existingDbUser?.country || 'Chile'),
+      budget_year: user.budgetYear ? Number(user.budgetYear) : (existingDbUser?.budget_year || 2026),
+      updated_at: new Date().toISOString(),
+    };
 
     let { error } = await supabase
       .from('users')
       .upsert(payload, { onConflict: 'id' });
 
-    // Si onConflict id no actualizó porque la fila en la BD tenía otro ID o correo
-    if (user.email) {
-      const emailTrimmed = user.email.toLowerCase().trim();
+    // Si hay correo resuelto, asegurar que se actualice la fila con ese correo
+    if (resolvedEmail) {
       const byEmail = await supabase
         .from('users')
-        .update({
-          name: payload.name,
-          phone: payload.phone,
-          phone_prefix: payload.phone_prefix,
-          instagram: payload.instagram,
-          country: payload.country,
-          avatar: payload.avatar,
-          photo_url: payload.photo_url,
-          role: payload.role,
-          title: payload.title,
-          comuna: payload.comuna,
-          establishment: payload.establishment,
-          health_service: payload.health_service,
-          budget_year: payload.budget_year,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('email', emailTrimmed);
+        .update(payload)
+        .eq('email', resolvedEmail);
       
       if (!byEmail.error) {
         error = null;
@@ -458,7 +513,7 @@ export async function upsertUserInSupabase(user: Partial<User> & { id?: string; 
 
     // Sincronizar también la metadata del usuario en Supabase Auth
     try {
-      await supabase.auth.updateUser({
+      const authUpdates: any = {
         data: {
           full_name: payload.name,
           name: payload.name,
@@ -472,8 +527,16 @@ export async function upsertUserInSupabase(user: Partial<User> & { id?: string; 
           instagram: payload.instagram,
           country: payload.country,
           budget_year: payload.budget_year,
+          photo_url: payload.photo_url,
+          avatar: payload.avatar,
         },
-      });
+      };
+
+      if (authEmail && resolvedEmail && authEmail.toLowerCase() !== resolvedEmail.toLowerCase()) {
+        authUpdates.email = resolvedEmail;
+      }
+
+      await supabase.auth.updateUser(authUpdates);
     } catch {
       // Ignorar si no hay sesión activa
     }

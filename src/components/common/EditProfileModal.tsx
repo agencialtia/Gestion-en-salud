@@ -50,13 +50,13 @@ const PHONE_PREFIXES = [
 export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose }) => {
   const { currentUser, updateCurrentUser, changeUserPassword } = useApp();
 
-  const [name, setName] = useState(currentUser.name || 'Klaus');
-  const [email, setEmail] = useState(currentUser.email || 'klausbauer10x@gmail.com');
+  const [name, setName] = useState(currentUser.name || '');
+  const [email, setEmail] = useState(currentUser.email || '');
   const [phonePrefix, setPhonePrefix] = useState(currentUser.phonePrefix || 'CL +56');
-  const [phone, setPhone] = useState(currentUser.phone || '1234567890');
-  const [instagram, setInstagram] = useState(currentUser.instagram || 'tuusuario');
+  const [phone, setPhone] = useState(currentUser.phone || '');
+  const [instagram, setInstagram] = useState(currentUser.instagram || '');
   const [country, setCountry] = useState(currentUser.country || 'Chile');
-  const [avatar, setAvatar] = useState(currentUser.avatar || 'K');
+  const [avatar, setAvatar] = useState(currentUser.avatar || (currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'));
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(currentUser.photoUrl);
 
   const [newPassword, setNewPassword] = useState('');
@@ -74,13 +74,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
   // Sync state with currentUser when opened
   useEffect(() => {
     if (isOpen) {
-      setName(currentUser.name || 'Klaus');
-      setEmail(currentUser.email || 'klausbauer10x@gmail.com');
+      setName(currentUser.name || '');
+      setEmail(currentUser.email || '');
       setPhonePrefix(currentUser.phonePrefix || 'CL +56');
-      setPhone(currentUser.phone || '1234567890');
-      setInstagram(currentUser.instagram || 'tuusuario');
+      setPhone(currentUser.phone || '');
+      setInstagram(currentUser.instagram || '');
       setCountry(currentUser.country || 'Chile');
-      setAvatar(currentUser.avatar || 'K');
+      setAvatar(currentUser.avatar || (currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'));
       setPhotoUrl(currentUser.photoUrl);
       setNewPassword('');
       setConfirmPassword('');
@@ -93,13 +93,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
   // Track if modified
   useEffect(() => {
     const isDirty = 
-      name !== (currentUser.name || 'Klaus') ||
-      email !== (currentUser.email || 'klausbauer10x@gmail.com') ||
+      name.trim() !== (currentUser.name || '').trim() ||
+      email.trim() !== (currentUser.email || '').trim() ||
       phonePrefix !== (currentUser.phonePrefix || 'CL +56') ||
-      phone !== (currentUser.phone || '1234567890') ||
-      instagram !== (currentUser.instagram || 'tuusuario') ||
+      phone.trim() !== (currentUser.phone || '').trim() ||
+      instagram.trim().replace(/^@/, '') !== (currentUser.instagram || '').trim().replace(/^@/, '') ||
       country !== (currentUser.country || 'Chile') ||
-      photoUrl !== currentUser.photoUrl ||
+      (photoUrl || '') !== (currentUser.photoUrl || '') ||
       newPassword.length > 0 ||
       confirmPassword.length > 0;
 
@@ -119,12 +119,51 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      if (event.target?.result) {
-        setPhotoUrl(event.target.result as string);
+      const result = event.target?.result as string;
+      if (!result) return;
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_DIM = 400;
+        let w = img.width;
+        let h = img.height;
+        if (w > h) {
+          if (w > MAX_DIM) {
+            h = Math.round((h * MAX_DIM) / w);
+            w = MAX_DIM;
+          }
+        } else {
+          if (h > MAX_DIM) {
+            w = Math.round((w * MAX_DIM) / h);
+            h = MAX_DIM;
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL('image/jpeg', 0.85);
+          setPhotoUrl(compressed);
+          setIsSaved(false);
+        } else {
+          setPhotoUrl(result);
+          setIsSaved(false);
+        }
+      };
+      img.onerror = () => {
+        setPhotoUrl(result);
         setIsSaved(false);
-      }
+      };
+      img.src = result;
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoUrl(undefined);
+    setIsSaved(false);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -205,11 +244,11 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
   };
 
   const handleDiscard = () => {
-    setName(currentUser.name || 'Klaus');
-    setEmail(currentUser.email || 'klausbauer10x@gmail.com');
+    setName(currentUser.name || '');
+    setEmail(currentUser.email || '');
     setPhonePrefix(currentUser.phonePrefix || 'CL +56');
-    setPhone(currentUser.phone || '1234567890');
-    setInstagram(currentUser.instagram || 'tuusuario');
+    setPhone(currentUser.phone || '');
+    setInstagram(currentUser.instagram || '');
     setCountry(currentUser.country || 'Chile');
     setPhotoUrl(currentUser.photoUrl);
     setNewPassword('');
@@ -290,7 +329,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                 />
               ) : (
                 <div className="h-20 w-20 sm:h-22 sm:w-22 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-3xl font-black text-white shadow-md">
-                  {name ? name.trim()[0].toUpperCase() : 'K'}
+                  {name ? name.trim()[0].toUpperCase() : 'U'}
                 </div>
               )}
 
@@ -304,6 +343,17 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                 <Camera className="h-4 w-4" />
               </button>
 
+              {photoUrl && (
+                <button
+                  type="button"
+                  onClick={handleRemovePhoto}
+                  className="absolute -top-1 -right-1 h-6 w-6 rounded-full bg-rose-500 border border-white dark:border-slate-800 flex items-center justify-center text-white shadow-sm hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                  title="Eliminar foto de perfil"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+
               <input
                 ref={fileInputRef}
                 type="file"
@@ -315,10 +365,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
 
             <div className="text-center sm:text-left space-y-1">
               <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-                {name || 'Klaus'}
+                {name || 'Usuario'}
               </h3>
               <p className="text-xs sm:text-sm font-mono text-slate-500 dark:text-slate-400">
-                {email || 'klausbauer10x@gmail.com'}
+                {email || 'Sin correo'}
               </p>
               <p className="text-[11px] text-slate-400 dark:text-slate-500 pt-0.5">
                 PNG, JPG o WEBP · máx 8 MB
@@ -354,7 +404,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Klaus"
+                  placeholder="Ej: Klaus Bauer"
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 focus:bg-white focus:border-indigo-500 focus:outline-none transition-colors"
                 />
               </div>
@@ -370,7 +420,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="klausbauer10x@gmail.com"
+                  placeholder="Ej: correo@ejemplo.com"
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 focus:bg-white focus:border-indigo-500 focus:outline-none transition-colors"
                 />
               </div>
@@ -399,7 +449,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="1234567890"
+                    placeholder="Ej: 912345678"
                     className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 focus:bg-white focus:border-indigo-500 focus:outline-none transition-colors"
                   />
                 </div>

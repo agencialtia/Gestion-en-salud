@@ -149,6 +149,11 @@ export interface AuthAccount {
   healthService?: string;
   avatar?: string;
   photoUrl?: string;
+  phone?: string;
+  phonePrefix?: string;
+  instagram?: string;
+  country?: string;
+  budgetYear?: string | number;
   authProvider: 'email' | 'google' | 'apple';
   emailVerified: boolean;
   verificationCode?: string;
