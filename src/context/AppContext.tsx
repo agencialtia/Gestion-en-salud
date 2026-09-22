@@ -2077,13 +2077,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // =========================================================================
   // SUPABASE DATABASE STATE & REALTIME SYNCHRONIZATION
   // =========================================================================
-  const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean>(true);
+  const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean>(() => isSupabaseConfigured());
   const [supabaseDbStatus, setSupabaseDbStatus] = useState<SupabaseDbStatus | null>(null);
   const [supabaseSyncState, setSupabaseSyncState] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [supabaseLastSyncTime, setSupabaseLastSyncTime] = useState<string | null>(null);
   const [supabaseSyncError, setSupabaseSyncError] = useState<string | null>(null);
 
   const testSupabaseDatabaseConnection = useCallback(async (): Promise<SupabaseDbStatus> => {
+    if (!isSupabaseConfigured()) {
+      const status: SupabaseDbStatus = {
+        connected: false,
+        projectId: '',
+        url: '',
+        latencyMs: 0,
+        tables: {},
+        totalRows: 0,
+        error: 'Supabase no está configurado con credenciales en este entorno. Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en Vercel.',
+        checkedAt: new Date().toISOString(),
+      };
+      setSupabaseDbStatus(status);
+      setIsSupabaseConnected(false);
+      setSupabaseSyncState('idle');
+      return status;
+    }
+
     setSupabaseSyncState('syncing');
     try {
       const status = await checkSupabaseDatabaseStatus();
@@ -2096,19 +2113,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       } else {
         setSupabaseSyncState('error');
         setSupabaseSyncError(status.error || 'No se pudo conectar a Supabase');
-        showToast('Error al verificar conexión con Supabase', 'error');
+        showToast('Supabase: ' + (status.error || 'Verifica credenciales en Vercel'), 'info');
       }
       return status;
     } catch (err: any) {
+      const msg = err?.message || 'Error de conexión';
+      const fallbackStatus: SupabaseDbStatus = {
+        connected: false,
+        projectId: '',
+        url: '',
+        latencyMs: 0,
+        tables: {},
+        totalRows: 0,
+        error: msg,
+        checkedAt: new Date().toISOString(),
+      };
+      setSupabaseDbStatus(fallbackStatus);
       setSupabaseSyncState('error');
-      setSupabaseSyncError(err?.message || 'Error de conexión');
+      setSupabaseSyncError(msg);
       setIsSupabaseConnected(false);
-      showToast('Error de conexión con Supabase: ' + (err?.message || 'Desconocido'), 'error');
-      throw err;
+      return fallbackStatus;
     }
   }, []);
 
   const syncWithSupabase = useCallback(async (direction: 'pull' | 'push' | 'both' = 'pull') => {
+    if (!isSupabaseConfigured()) {
+      showToast('Supabase no está configurado en este entorno. Los datos se mantienen en almacenamiento local seguro.', 'info');
+      setSupabaseSyncState('idle');
+      return;
+    }
+
     setSupabaseSyncState('syncing');
     try {
       if (direction === 'pull' || direction === 'both') {
@@ -2178,6 +2212,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, []);
 
   const handlePushAllDataToSupabase = useCallback(async () => {
+    if (!isSupabaseConfigured()) {
+      showToast('Supabase no está configurado en este entorno. Configura las credenciales en Vercel para subir.', 'info');
+      setSupabaseSyncState('idle');
+      return { success: false, errors: ['Supabase no configurado en este entorno'], insertedCount: 0 };
+    }
+
     setSupabaseSyncState('syncing');
     try {
       const res = await pushAllToSupabase({
@@ -2200,13 +2240,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch (err: any) {
       setSupabaseSyncState('error');
       showToast('Error al subir datos a Supabase', 'error');
-      throw err;
+      return { success: false, errors: [err?.message || 'Error desconocido'], insertedCount: 0 };
     }
   }, [programs, tasks, purchases, meetings, indicators, contacts, questions]);
 
   // Initial database sync and real-time subscription
   useEffect(() => {
     let isMounted = true;
+
+    if (!isSupabaseConfigured()) {
+      setIsSupabaseConnected(false);
+      return;
+    }
 
     const initDb = async () => {
       try {

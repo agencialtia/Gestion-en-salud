@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Establishment } from '../../types';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import { getSupabaseUrl, getSupabaseAnonKey, SUPABASE_PROJECT_ID } from '../../lib/supabase';
 
 export const ConfiguracionAuditoriaView: React.FC = () => {
@@ -68,9 +69,9 @@ export const ConfiguracionAuditoriaView: React.FC = () => {
   const [isPushingSupabase, setIsPushingSupabase] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Auto-test Supabase connectivity on mount if not yet evaluated
+  // Auto-test Supabase connectivity on mount only if configured and not yet evaluated
   useEffect(() => {
-    if (!supabaseDbStatus) {
+    if (!supabaseDbStatus && isSupabaseConfigured()) {
       testSupabaseDatabaseConnection().catch(() => {});
     }
   }, []);

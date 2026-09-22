@@ -96,9 +96,15 @@ export const supabase = getSupabase();
  * Checks connectivity to the live Supabase Auth service
  */
 export const checkSupabaseHealth = async (): Promise<{ connected: boolean; version?: string; error?: string }> => {
+  if (!isSupabaseConfigured()) {
+    return { connected: false, error: 'Supabase no está configurado con credenciales en este entorno.' };
+  }
   try {
     const url = getSupabaseUrl();
     const key = getSupabaseAnonKey();
+    if (!url || !key) {
+      return { connected: false, error: 'Credenciales incompletas' };
+    }
     const response = await fetch(`${url}/auth/v1/health`, {
       headers: {
         apikey: key,

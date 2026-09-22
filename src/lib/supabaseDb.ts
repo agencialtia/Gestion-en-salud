@@ -4,7 +4,7 @@
  * Connected to live PostgreSQL database on Supabase
  */
 
-import { supabase, SUPABASE_PROJECT_ID, OFFICIAL_SUPABASE_URL } from './supabase';
+import { supabase, SUPABASE_PROJECT_ID, OFFICIAL_SUPABASE_URL, isSupabaseConfigured } from './supabase';
 import {
   Task,
   Purchase,
@@ -380,111 +380,165 @@ export function fromDbUser(row: any): User {
    ========================================================================== */
 
 export async function fetchHealthProgramsFromSupabase(): Promise<HealthProgram[]> {
-  const { data, error } = await supabase
-    .from('health_programs')
-    .select('*')
-    .order('name', { ascending: true });
-  if (error) {
-    console.error('Error fetching health_programs from Supabase:', error);
-    throw error;
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('health_programs')
+      .select('*')
+      .order('name', { ascending: true });
+    if (error) {
+      console.warn('Supabase health_programs not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbProgram);
+  } catch (err: any) {
+    console.warn('Fetch health_programs failed safely:', err?.message);
+    return [];
   }
-  return (data || []).map(fromDbProgram);
 }
 
 export async function fetchTasksFromSupabase(): Promise<Task[]> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) {
-    console.error('Error fetching tasks from Supabase:', error);
-    throw error;
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.warn('Supabase tasks not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbTask);
+  } catch (err: any) {
+    console.warn('Fetch tasks failed safely:', err?.message);
+    return [];
   }
-  return (data || []).map(fromDbTask);
 }
 
 export async function fetchPurchasesFromSupabase(): Promise<Purchase[]> {
-  const { data, error } = await supabase
-    .from('purchases')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) {
-    console.error('Error fetching purchases from Supabase:', error);
-    throw error;
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('purchases')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.warn('Supabase purchases not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbPurchase);
+  } catch (err: any) {
+    console.warn('Fetch purchases failed safely:', err?.message);
+    return [];
   }
-  return (data || []).map(fromDbPurchase);
 }
 
 export async function fetchMeetingsFromSupabase(): Promise<Meeting[]> {
-  const { data, error } = await supabase
-    .from('meetings')
-    .select('*')
-    .order('date', { ascending: false });
-  if (error) {
-    console.error('Error fetching meetings from Supabase:', error);
-    throw error;
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('meetings')
+      .select('*')
+      .order('date', { ascending: false });
+    if (error) {
+      console.warn('Supabase meetings not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbMeeting);
+  } catch (err: any) {
+    console.warn('Fetch meetings failed safely:', err?.message);
+    return [];
   }
-  return (data || []).map(fromDbMeeting);
 }
 
 export async function fetchIndicatorsFromSupabase(): Promise<Indicator[]> {
-  const { data, error } = await supabase
-    .from('indicators')
-    .select('*')
-    .order('code', { ascending: true });
-  if (error) {
-    console.error('Error fetching indicators from Supabase:', error);
-    throw error;
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('indicators')
+      .select('*')
+      .order('code', { ascending: true });
+    if (error) {
+      console.warn('Supabase indicators not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbIndicator);
+  } catch (err: any) {
+    console.warn('Fetch indicators failed safely:', err?.message);
+    return [];
   }
-  return (data || []).map(fromDbIndicator);
 }
 
 export async function fetchContactsFromSupabase(): Promise<Contact[]> {
-  const { data, error } = await supabase
-    .from('contacts')
-    .select('*')
-    .order('name', { ascending: true });
-  if (error) {
-    console.error('Error fetching contacts from Supabase:', error);
-    throw error;
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('contacts')
+      .select('*')
+      .order('name', { ascending: true });
+    if (error) {
+      console.warn('Supabase contacts not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbContact);
+  } catch (err: any) {
+    console.warn('Fetch contacts failed safely:', err?.message);
+    return [];
   }
-  return (data || []).map(fromDbContact);
 }
 
 export async function fetchQuestionsFromSupabase(): Promise<Question[]> {
-  const { data, error } = await supabase
-    .from('questions')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) {
-    console.error('Error fetching questions from Supabase:', error);
-    throw error;
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('questions')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.warn('Supabase questions not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbQuestion);
+  } catch (err: any) {
+    console.warn('Fetch questions failed safely:', err?.message);
+    return [];
   }
-  return (data || []).map(fromDbQuestion);
 }
 
 export async function fetchAlertsFromSupabase(): Promise<Alert[]> {
-  const { data, error } = await supabase
-    .from('alerts')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) {
-    console.error('Error fetching alerts from Supabase:', error);
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('alerts')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.warn('Supabase alerts not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbAlert);
+  } catch (err: any) {
+    console.warn('Fetch alerts failed safely:', err?.message);
     return [];
   }
-  return (data || []).map(fromDbAlert);
 }
 
 export async function fetchUsersFromSupabase(): Promise<User[]> {
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .order('name', { ascending: true });
-  if (error) {
-    console.error('Error fetching users from Supabase:', error);
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('name', { ascending: true });
+    if (error) {
+      console.warn('Supabase users not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbUser);
+  } catch (err: any) {
+    console.warn('Fetch users failed safely:', err?.message);
     return [];
   }
-  return (data || []).map(fromDbUser);
 }
 
 /* ==========================================================================
@@ -492,194 +546,277 @@ export async function fetchUsersFromSupabase(): Promise<User[]> {
    ========================================================================== */
 
 export async function upsertTaskInSupabase(task: Task): Promise<Task> {
-  const payload = toDbTask(task);
-  const { data, error } = await supabase
-    .from('tasks')
-    .upsert(payload, { onConflict: 'id' })
-    .select()
-    .single();
+  if (!isSupabaseConfigured()) return task;
+  try {
+    const payload = toDbTask(task);
+    const { data, error } = await supabase
+      .from('tasks')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
 
-  if (error) {
-    console.error('Error upserting task in Supabase:', error);
-    throw error;
+    if (error) {
+      console.warn('Error upserting task in Supabase:', error.message);
+      return task;
+    }
+    return fromDbTask(data);
+  } catch (err: any) {
+    console.warn('Task upsert skipped safely:', err?.message);
+    return task;
   }
-  return fromDbTask(data);
 }
 
 export async function deleteTaskFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
   // If id is not uuid, don't execute query to avoid 22P02 Postgres error
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     return;
   }
-  const { error } = await supabase.from('tasks').delete().eq('id', id);
-  if (error) {
-    console.error('Error deleting task from Supabase:', error);
+  try {
+    const { error } = await supabase.from('tasks').delete().eq('id', id);
+    if (error) {
+      console.warn('Error deleting task from Supabase:', error.message);
+    }
+  } catch (err: any) {
+    console.warn('Task delete skipped safely:', err?.message);
   }
 }
 
 export async function upsertPurchaseInSupabase(purchase: Purchase): Promise<Purchase> {
-  const payload = toDbPurchase(purchase);
-  const { data, error } = await supabase
-    .from('purchases')
-    .upsert(payload, { onConflict: 'id' })
-    .select()
-    .single();
+  if (!isSupabaseConfigured()) return purchase;
+  try {
+    const payload = toDbPurchase(purchase);
+    const { data, error } = await supabase
+      .from('purchases')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
 
-  if (error) {
-    console.error('Error upserting purchase in Supabase:', error);
-    throw error;
+    if (error) {
+      console.warn('Error upserting purchase in Supabase:', error.message);
+      return purchase;
+    }
+    return fromDbPurchase(data);
+  } catch (err: any) {
+    console.warn('Purchase upsert skipped safely:', err?.message);
+    return purchase;
   }
-  return fromDbPurchase(data);
 }
 
 export async function deletePurchaseFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     return;
   }
-  const { error } = await supabase.from('purchases').delete().eq('id', id);
-  if (error) {
-    console.error('Error deleting purchase from Supabase:', error);
+  try {
+    const { error } = await supabase.from('purchases').delete().eq('id', id);
+    if (error) {
+      console.warn('Error deleting purchase from Supabase:', error.message);
+    }
+  } catch (err: any) {
+    console.warn('Purchase delete skipped safely:', err?.message);
   }
 }
 
 export async function upsertMeetingInSupabase(meeting: Meeting): Promise<Meeting> {
-  const payload = toDbMeeting(meeting);
-  const { data, error } = await supabase
-    .from('meetings')
-    .upsert(payload, { onConflict: 'id' })
-    .select()
-    .single();
+  if (!isSupabaseConfigured()) return meeting;
+  try {
+    const payload = toDbMeeting(meeting);
+    const { data, error } = await supabase
+      .from('meetings')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
 
-  if (error) {
-    console.error('Error upserting meeting in Supabase:', error);
-    throw error;
+    if (error) {
+      console.warn('Error upserting meeting in Supabase:', error.message);
+      return meeting;
+    }
+    return fromDbMeeting(data);
+  } catch (err: any) {
+    console.warn('Meeting upsert skipped safely:', err?.message);
+    return meeting;
   }
-  return fromDbMeeting(data);
 }
 
 export async function deleteMeetingFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     return;
   }
-  const { error } = await supabase.from('meetings').delete().eq('id', id);
-  if (error) {
-    console.error('Error deleting meeting from Supabase:', error);
+  try {
+    const { error } = await supabase.from('meetings').delete().eq('id', id);
+    if (error) {
+      console.warn('Error deleting meeting from Supabase:', error.message);
+    }
+  } catch (err: any) {
+    console.warn('Meeting delete skipped safely:', err?.message);
   }
 }
 
 export async function upsertIndicatorInSupabase(indicator: Indicator): Promise<Indicator> {
-  const payload = toDbIndicator(indicator);
-  const { data, error } = await supabase
-    .from('indicators')
-    .upsert(payload, { onConflict: 'id' })
-    .select()
-    .single();
+  if (!isSupabaseConfigured()) return indicator;
+  try {
+    const payload = toDbIndicator(indicator);
+    const { data, error } = await supabase
+      .from('indicators')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
 
-  if (error) {
-    console.error('Error upserting indicator in Supabase:', error);
-    throw error;
+    if (error) {
+      console.warn('Error upserting indicator in Supabase:', error.message);
+      return indicator;
+    }
+    return fromDbIndicator(data);
+  } catch (err: any) {
+    console.warn('Indicator upsert skipped safely:', err?.message);
+    return indicator;
   }
-  return fromDbIndicator(data);
 }
 
 export async function deleteIndicatorFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     return;
   }
-  const { error } = await supabase.from('indicators').delete().eq('id', id);
-  if (error) {
-    console.error('Error deleting indicator from Supabase:', error);
+  try {
+    const { error } = await supabase.from('indicators').delete().eq('id', id);
+    if (error) {
+      console.warn('Error deleting indicator from Supabase:', error.message);
+    }
+  } catch (err: any) {
+    console.warn('Indicator delete skipped safely:', err?.message);
   }
 }
 
 export async function upsertContactInSupabase(contact: Contact): Promise<Contact> {
-  const payload = toDbContact(contact);
-  const { data, error } = await supabase
-    .from('contacts')
-    .upsert(payload, { onConflict: 'id' })
-    .select()
-    .single();
+  if (!isSupabaseConfigured()) return contact;
+  try {
+    const payload = toDbContact(contact);
+    const { data, error } = await supabase
+      .from('contacts')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
 
-  if (error) {
-    console.error('Error upserting contact in Supabase:', error);
-    throw error;
+    if (error) {
+      console.warn('Error upserting contact in Supabase:', error.message);
+      return contact;
+    }
+    return fromDbContact(data);
+  } catch (err: any) {
+    console.warn('Contact upsert skipped safely:', err?.message);
+    return contact;
   }
-  return fromDbContact(data);
 }
 
 export async function deleteContactFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     return;
   }
-  const { error } = await supabase.from('contacts').delete().eq('id', id);
-  if (error) {
-    console.error('Error deleting contact from Supabase:', error);
+  try {
+    const { error } = await supabase.from('contacts').delete().eq('id', id);
+    if (error) {
+      console.warn('Error deleting contact from Supabase:', error.message);
+    }
+  } catch (err: any) {
+    console.warn('Contact delete skipped safely:', err?.message);
   }
 }
 
 export async function upsertQuestionInSupabase(question: Question): Promise<Question> {
-  const payload = toDbQuestion(question);
-  const { data, error } = await supabase
-    .from('questions')
-    .upsert(payload, { onConflict: 'id' })
-    .select()
-    .single();
+  if (!isSupabaseConfigured()) return question;
+  try {
+    const payload = toDbQuestion(question);
+    const { data, error } = await supabase
+      .from('questions')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
 
-  if (error) {
-    console.error('Error upserting question in Supabase:', error);
-    throw error;
+    if (error) {
+      console.warn('Error upserting question in Supabase:', error.message);
+      return question;
+    }
+    return fromDbQuestion(data);
+  } catch (err: any) {
+    console.warn('Question upsert skipped safely:', err?.message);
+    return question;
   }
-  return fromDbQuestion(data);
 }
 
 export async function deleteQuestionFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     return;
   }
-  const { error } = await supabase.from('questions').delete().eq('id', id);
-  if (error) {
-    console.error('Error deleting question from Supabase:', error);
+  try {
+    const { error } = await supabase.from('questions').delete().eq('id', id);
+    if (error) {
+      console.warn('Error deleting question from Supabase:', error.message);
+    }
+  } catch (err: any) {
+    console.warn('Question delete skipped safely:', err?.message);
   }
 }
 
 export async function upsertAlertInSupabase(alert: Alert): Promise<Alert> {
-  const payload = toDbAlert(alert);
-  const { data, error } = await supabase
-    .from('alerts')
-    .upsert(payload, { onConflict: 'id' })
-    .select()
-    .single();
+  if (!isSupabaseConfigured()) return alert;
+  try {
+    const payload = toDbAlert(alert);
+    const { data, error } = await supabase
+      .from('alerts')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
 
-  if (error) {
-    console.error('Error upserting alert in Supabase:', error);
-    throw error;
+    if (error) {
+      console.warn('Error upserting alert in Supabase:', error.message);
+      return alert;
+    }
+    return fromDbAlert(data);
+  } catch (err: any) {
+    console.warn('Alert upsert skipped safely:', err?.message);
+    return alert;
   }
-  return fromDbAlert(data);
 }
 
 export async function deleteAlertFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     return;
   }
-  const { error } = await supabase.from('alerts').delete().eq('id', id);
-  if (error) {
-    console.error('Error deleting alert from Supabase:', error);
+  try {
+    const { error } = await supabase.from('alerts').delete().eq('id', id);
+    if (error) {
+      console.warn('Error deleting alert from Supabase:', error.message);
+    }
+  } catch (err: any) {
+    console.warn('Alert delete skipped safely:', err?.message);
   }
 }
 
 export async function upsertProgramInSupabase(program: HealthProgram): Promise<HealthProgram> {
-  const payload = toDbProgram(program);
-  const { data, error } = await supabase
-    .from('health_programs')
-    .upsert(payload, { onConflict: 'id' })
-    .select()
-    .single();
+  if (!isSupabaseConfigured()) return program;
+  try {
+    const payload = toDbProgram(program);
+    const { data, error } = await supabase
+      .from('health_programs')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
 
-  if (error) {
-    console.error('Error upserting program in Supabase:', error);
-    throw error;
+    if (error) {
+      console.warn('Error upserting program in Supabase:', error.message);
+      return program;
+    }
+    return fromDbProgram(data);
+  } catch (err: any) {
+    console.warn('Program upsert skipped safely:', err?.message);
+    return program;
   }
-  return fromDbProgram(data);
 }
 
 /* ==========================================================================
@@ -698,6 +835,19 @@ export interface SupabaseDbStatus {
 }
 
 export async function checkSupabaseDatabaseStatus(): Promise<SupabaseDbStatus> {
+  if (!isSupabaseConfigured()) {
+    return {
+      connected: false,
+      projectId: '',
+      url: '',
+      latencyMs: 0,
+      tables: {},
+      totalRows: 0,
+      error: 'Variables de entorno no configuradas en este entorno. Configúralas en Vercel para sincronización en la nube.',
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
   const startTime = Date.now();
   const tables = [
     'health_programs',
@@ -768,6 +918,20 @@ export async function pullAllFromSupabase(): Promise<{
   alerts: Alert[];
   users: User[];
 }> {
+  if (!isSupabaseConfigured()) {
+    return {
+      programs: [],
+      tasks: [],
+      purchases: [],
+      meetings: [],
+      indicators: [],
+      contacts: [],
+      questions: [],
+      alerts: [],
+      users: [],
+    };
+  }
+
   const [
     programs,
     tasks,
@@ -817,6 +981,14 @@ export async function pushAllToSupabase(data: {
   alerts?: Alert[];
   programs?: HealthProgram[];
 }): Promise<{ success: boolean; errors: string[]; insertedCount: number }> {
+  if (!isSupabaseConfigured()) {
+    return {
+      success: false,
+      errors: ['Supabase no está configurado con credenciales en este entorno.'],
+      insertedCount: 0,
+    };
+  }
+
   const errors: string[] = [];
   let insertedCount = 0;
 
@@ -914,6 +1086,10 @@ export function subscribeToSupabaseDatabase(onEvent: (event: {
   newRecord: any;
   oldRecord: any;
 }) => void): () => void {
+  if (!isSupabaseConfigured()) {
+    return () => {};
+  }
+
   try {
     const channel = supabase
       .channel('schema-db-changes')
