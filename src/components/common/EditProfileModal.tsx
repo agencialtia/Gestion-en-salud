@@ -232,7 +232,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
       }
 
       setIsSaved(true);
-      setSuccessMessage('¡Perfil y datos guardados exitosamente en la base de datos!');
+      setSuccessMessage('¡Perfil y datos guardados exitosamente!');
       setTimeout(() => {
         onClose();
       }, 700);
@@ -612,7 +612,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
               {isSaving ? (
                 <>
                   <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Guardando en Supabase...</span>
+                  <span>Guardando cambios...</span>
                 </>
               ) : (
                 <>
