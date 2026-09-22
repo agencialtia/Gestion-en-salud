@@ -21,9 +21,9 @@ CREATE TABLE IF NOT EXISTS public.users (
   health_service TEXT DEFAULT 'SSMN (Metropolitano Norte)',
   avatar TEXT,
   photo_url TEXT,
-  phone TEXT DEFAULT '1234567890',
+  phone TEXT,
   phone_prefix TEXT DEFAULT 'CL +56',
-  instagram TEXT DEFAULT 'tuusuario',
+  instagram TEXT,
   country TEXT DEFAULT 'Chile',
   budget_year INTEGER DEFAULT 2026,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -34,13 +34,13 @@ CREATE TABLE IF NOT EXISTS public.users (
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'phone') THEN
-    ALTER TABLE public.users ADD COLUMN phone TEXT DEFAULT '1234567890';
+    ALTER TABLE public.users ADD COLUMN phone TEXT;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'phone_prefix') THEN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'phone_prefix') THEN
     ALTER TABLE public.users ADD COLUMN phone_prefix TEXT DEFAULT 'CL +56';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'instagram') THEN
-    ALTER TABLE public.users ADD COLUMN instagram TEXT DEFAULT 'tuusuario';
+    ALTER TABLE public.users ADD COLUMN instagram TEXT;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'country') THEN
     ALTER TABLE public.users ADD COLUMN country TEXT DEFAULT 'Chile';
@@ -58,16 +58,6 @@ BEGIN
     ALTER TABLE public.users ADD COLUMN updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL;
   END IF;
 END $$;
-
--- Actualizar filas existentes en public.users con valores por defecto si tienen campos nulos
-UPDATE public.users 
-SET 
-  phone = COALESCE(NULLIF(phone, ''), '1234567890'),
-  phone_prefix = COALESCE(NULLIF(phone_prefix, ''), 'CL +56'),
-  instagram = COALESCE(NULLIF(instagram, ''), 'tuusuario'),
-  country = COALESCE(NULLIF(country, ''), 'Chile'),
-  budget_year = COALESCE(budget_year, 2026)
-WHERE phone IS NULL OR phone_prefix IS NULL OR instagram IS NULL OR country IS NULL;
 
 -- 3. Tabla de Programas de Salud (public.health_programs)
 CREATE TABLE IF NOT EXISTS public.health_programs (

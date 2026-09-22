@@ -13,7 +13,6 @@ import {
   LogOut,
   Building2,
   Check,
-  Database,
 } from 'lucide-react';
 import { LANGUAGE_OPTIONS, LanguageOption, Language } from '../../i18n/translations';
 
@@ -33,8 +32,6 @@ export const Header: React.FC<{
     setLanguage,
     t,
     setActiveView,
-    isSupabaseConnected,
-    supabaseDbStatus,
   } = useApp();
 
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -115,28 +112,6 @@ export const Header: React.FC<{
 
       {/* Right: Language, Dark mode, User Avatar Profile */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Cloud Database Live Status Pill */}
-        <button
-          id="header-cloud-status-btn"
-          type="button"
-          onClick={() => setActiveView('configuracion')}
-          className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-800 transition-colors"
-          title={isSupabaseConnected ? 'Base de datos en la nube conectada y sincronizada' : 'Modo local activo'}
-        >
-          <span className="relative flex h-2 w-2">
-            <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${
-              isSupabaseConnected ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'
-            }`} />
-            <span className={`relative inline-flex rounded-full h-2 w-2 ${
-              isSupabaseConnected ? 'bg-emerald-500' : 'bg-amber-500'
-            }`} />
-          </span>
-          <Database className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-          <span className="text-[11px] font-medium hidden md:inline">
-            {isSupabaseConnected ? 'En Línea' : 'Local'}
-          </span>
-        </button>
-
         {/* Interactive Language selector: ES / PT / EN 🌐 with dropdown */}
         <div className="relative" ref={languageMenuRef}>
           <button
