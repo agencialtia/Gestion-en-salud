@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Sidebar } from '../common/Sidebar';
 import { Header } from '../common/Header';
@@ -27,6 +28,7 @@ import { AuthView } from '../views/AuthView';
 export const Layout: React.FC = () => {
   const {
     isAuthenticated,
+    isVerifyingAuthCode,
     activeView,
     selectedProgramId,
     deleteTask,
@@ -134,6 +136,25 @@ export const Layout: React.FC = () => {
     setItemToDelete(null);
     setDrawerOpen(false);
   };
+
+  if (isVerifyingAuthCode) {
+    return (
+      <div className="relative min-h-screen w-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200/80 dark:border-slate-850 p-8 text-center space-y-4">
+          <div className="h-16 w-16 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center ring-1 ring-emerald-500/20">
+            <RefreshCw className="h-8 w-8 animate-spin" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+            Verificando credenciales
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Estamos confirmando tu enlace de acceso y preparando tu sesión de trabajo de forma segura...
+          </p>
+        </div>
+        <ToastContainer />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (

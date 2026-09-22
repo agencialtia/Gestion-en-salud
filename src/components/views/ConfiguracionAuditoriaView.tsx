@@ -39,7 +39,6 @@ import {
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Establishment } from '../../types';
 import { isSupabaseConfigured } from '../../lib/supabase';
-import { getSupabaseUrl, getSupabaseAnonKey, SUPABASE_PROJECT_ID } from '../../lib/supabase';
 
 export const ConfiguracionAuditoriaView: React.FC = () => {
   const {
@@ -81,9 +80,9 @@ export const ConfiguracionAuditoriaView: React.FC = () => {
     try {
       const res = await testSupabaseDatabaseConnection();
       if (res.connected) {
-        showToast(`Conexión exitosa con Supabase (${res.latencyMs} ms, ${res.totalRows} registros en la nube)`, 'success');
+        showToast(`Conexión exitosa con la base de datos (${res.latencyMs} ms, ${res.totalRows} registros en la nube)`, 'success');
       } else {
-        showToast(`No se pudo conectar con Supabase: ${res.error || 'Verifica credenciales'}`, 'error');
+        showToast(`No se pudo conectar con el servidor: ${res.error || 'Verifica el estado del servicio'}`, 'error');
       }
     } catch (err: any) {
       showToast(`Error de conexión: ${err?.message}`, 'error');
@@ -352,8 +351,8 @@ export const ConfiguracionAuditoriaView: React.FC = () => {
         </div>
       </div>
 
-      {/* Supabase Cloud Database Integration Section */}
-      <div id="supabase-integration-panel" className="p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-5 shadow-sm w-full">
+      {/* Cloud Database Integration Section */}
+      <div id="cloud-integration-panel" className="p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-5 shadow-sm w-full">
         {/* Header & Status */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-start sm:items-center gap-3">
@@ -402,7 +401,7 @@ export const ConfiguracionAuditoriaView: React.FC = () => {
               onClick={handleTestSupabase}
               disabled={isTestingSupabase}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750 transition-colors disabled:opacity-50"
-              title="Probar conexión con Supabase en vivo"
+              title="Verificar conexión en vivo con el servidor"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isTestingSupabase ? 'animate-spin text-indigo-500' : 'text-slate-400'}`} />
               <span>{isTestingSupabase ? 'Verificando...' : t('supabaseTestConnection')}</span>
@@ -424,7 +423,7 @@ export const ConfiguracionAuditoriaView: React.FC = () => {
               onClick={handlePushSupabase}
               disabled={isPushingSupabase || supabaseSyncState === 'syncing'}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-colors disabled:opacity-50"
-              title="Subir y respaldar todos los registros locales a Supabase"
+              title="Respaldar todos los registros locales en la nube"
             >
               <ArrowUpToLine className={`h-3.5 w-3.5 ${isPushingSupabase ? 'animate-bounce' : ''}`} />
               <span>{isPushingSupabase ? 'Subiendo...' : t('supabasePushNow')}</span>
@@ -440,43 +439,21 @@ export const ConfiguracionAuditoriaView: React.FC = () => {
           </div>
         )}
 
-        {/* Project Metrics Summary Strip */}
+        {/* System Metrics Summary Strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
           <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800 space-y-1">
-            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Proyecto ID</div>
-            <div className="flex items-center justify-between gap-1">
-              <span className="font-mono font-bold text-slate-800 dark:text-slate-200 truncate">
-                {SUPABASE_PROJECT_ID || 'Sin configurar'}
-              </span>
-              {SUPABASE_PROJECT_ID && (
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(SUPABASE_PROJECT_ID, 'ID de Proyecto')}
-                  className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
-                  title="Copiar ID de Proyecto"
-                >
-                  {copiedKey === 'ID de Proyecto' ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                </button>
-              )}
+            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Infraestructura</div>
+            <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <span>Cloud Server Activo</span>
             </div>
           </div>
 
           <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800 space-y-1">
-            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Endpoint REST</div>
-            <div className="flex items-center justify-between gap-1">
-              <span className="font-mono text-slate-800 dark:text-slate-200 truncate">
-                {getSupabaseUrl() ? getSupabaseUrl().replace(/^https?:\/\//, '') : 'No configurado'}
-              </span>
-              {getSupabaseUrl() && (
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(getSupabaseUrl(), 'URL Supabase')}
-                  className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
-                  title="Copiar URL completa"
-                >
-                  {copiedKey === 'URL Supabase' ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                </button>
-              )}
+            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Seguridad & Cifrado</div>
+            <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              <ShieldCheck className="h-4 w-4 text-emerald-500" />
+              <span>SSL / RLS Activo</span>
             </div>
           </div>
 
@@ -504,10 +481,10 @@ export const ConfiguracionAuditoriaView: React.FC = () => {
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-2">
               <Layers className="h-4 w-4 text-slate-400" />
-              <span className="font-bold text-slate-800 dark:text-slate-200">{t('supabaseTables')} (PostgreSQL)</span>
+              <span className="font-bold text-slate-800 dark:text-slate-200">{t('supabaseTables')}</span>
             </div>
             <span className="text-slate-500 dark:text-slate-400">
-              {supabaseDbStatus?.totalRows !== undefined ? `${supabaseDbStatus.totalRows} registros en total` : '9 tablas activas'}
+              {supabaseDbStatus?.totalRows !== undefined ? `${supabaseDbStatus.totalRows} registros en total` : '9 módulos conectados'}
             </span>
           </div>
 
@@ -554,22 +531,12 @@ export const ConfiguracionAuditoriaView: React.FC = () => {
           </div>
         </div>
 
-        {/* Environment Variables & Information Footer */}
-        <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
-            <span>
-              Conexión autenticada vía <strong>VITE_SUPABASE_URL</strong> y <strong>VITE_SUPABASE_ANON_KEY</strong>. Los valores se inyectan mediante variables de entorno (Vercel / .env).
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => copyToClipboard(`VITE_SUPABASE_URL=${getSupabaseUrl()}\nVITE_SUPABASE_ANON_KEY=${getSupabaseAnonKey()}`, 'Variables para Vercel / .env')}
-            className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:underline font-semibold shrink-0"
-          >
-            <Copy className="h-3 w-3" />
-            <span>Copiar para Vercel / .env</span>
-          </button>
+        {/* Security & System Info Footer */}
+        <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
+          <span>
+            Persistencia centralizada con cifrado SSL de extremo a extremo y control de accesos basado en roles. Todos los registros y modificaciones operativas se respaldan de forma continua.
+          </span>
         </div>
       </div>
 

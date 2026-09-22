@@ -225,7 +225,52 @@ EXCEPTION
   WHEN others THEN NULL;
 END $$;
 
--- 7. Datos de programas (usando valores numéricos compatibles con integer o text)
+-- 7. Trigger automático para sincronizar auth.users -> public.users
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.users (id, name, email, role, title, comuna, establishment, health_service, avatar)
+  VALUES (
+    NEW.id::text,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'role', 'referente'),
+    COALESCE(NEW.raw_user_meta_data->>'title', 'Referente de Programas de Salud'),
+    COALESCE(NEW.raw_user_meta_data->>'comuna', 'Quilicura (DISAM)'),
+    COALESCE(NEW.raw_user_meta_data->>'establishment', 'Dirección de Salud / Comunal'),
+    COALESCE(NEW.raw_user_meta_data->>'healthService', 'SSMN (Metropolitano Norte)'),
+    UPPER(SUBSTRING(COALESCE(NEW.raw_user_meta_data->>'name', NEW.email) FROM 1 FOR 1))
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    email = EXCLUDED.email,
+    role = COALESCE(public.users.role, EXCLUDED.role),
+    title = COALESCE(public.users.title, EXCLUDED.title);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Sincronizar usuarios existentes en auth.users que aún no estén en public.users
+INSERT INTO public.users (id, name, email, role, title, comuna, establishment, health_service, avatar)
+SELECT
+  id::text,
+  COALESCE(raw_user_meta_data->>'full_name', raw_user_meta_data->>'name', split_part(email, '@', 1)),
+  email,
+  COALESCE(raw_user_meta_data->>'role', 'referente'),
+  COALESCE(raw_user_meta_data->>'title', 'Referente de Programas de Salud'),
+  COALESCE(raw_user_meta_data->>'comuna', 'Quilicura (DISAM)'),
+  COALESCE(raw_user_meta_data->>'establishment', 'Dirección de Salud / Comunal'),
+  COALESCE(raw_user_meta_data->>'healthService', 'SSMN (Metropolitano Norte)'),
+  UPPER(SUBSTRING(COALESCE(raw_user_meta_data->>'name', email) FROM 1 FOR 1))
+FROM auth.users
+ON CONFLICT (id) DO NOTHING;
+
+-- 8. Datos de programas (usando valores numéricos compatibles con integer o text)
 INSERT INTO public.health_programs (id, code, name, short_name, description, referente, presupuesto_total, color, icon_name, target_population, coverage, status, year)
 VALUES
   ('praps_cpu', 'CPU', 'PRAPS Cuidados Paliativos Universales', 'Cuidados Paliativos (CPU)', 'Atención integral médica y psicosocial en etapa avanzada en la red APS de Quilicura.', 'Klaus Bauer (DISAM Quilicura)', 68500000, '#0284c7', 'HeartHandshake', '1200', 88, 'activo', 2026),

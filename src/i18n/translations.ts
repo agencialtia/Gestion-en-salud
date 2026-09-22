@@ -120,16 +120,16 @@ export const translations = {
     ingresarPrograma: 'Ingresar a programa',
     collapseSidebar: 'Ocultar menú lateral',
 
-    // Supabase Integration
-    supabaseIntegration: 'Integración con Supabase',
-    supabaseDesc: 'Base de datos PostgreSQL en la nube y sincronización en tiempo real',
-    supabaseConnected: 'Conectado a PostgreSQL Cloud',
-    supabaseDisconnected: 'Desconectado de Supabase',
-    supabaseSyncNow: 'Sincronizar Datos (Pull)',
-    supabasePushNow: 'Respaldar a Supabase (Push)',
-    supabaseTestConnection: 'Probar Conexión',
-    supabaseRealtimeActive: 'Realtime Activo',
-    supabaseTables: 'Tablas Sincronizadas',
+    // Cloud Database Integration
+    supabaseIntegration: 'Base de Datos Cloud',
+    supabaseDesc: 'Almacenamiento seguro en la nube y persistencia en tiempo real',
+    supabaseConnected: 'Conectado a la Nube',
+    supabaseDisconnected: 'Modo Local',
+    supabaseSyncNow: 'Actualizar Datos (Pull)',
+    supabasePushNow: 'Respaldar en la Nube (Push)',
+    supabaseTestConnection: 'Verificar Conexión',
+    supabaseRealtimeActive: 'Tiempo Real Activo',
+    supabaseTables: 'Tablas Centralizadas',
 
     // Toasts & feedback
     languageChanged: 'Idioma cambiado a Español',
@@ -240,16 +240,16 @@ export const translations = {
     ingresarPrograma: 'Acessar programa',
     collapseSidebar: 'Ocultar menu lateral',
 
-    // Supabase Integration
-    supabaseIntegration: 'Integração com Supabase',
-    supabaseDesc: 'Banco de dados PostgreSQL na nuvem e sincronização em tempo real',
-    supabaseConnected: 'Conectado ao PostgreSQL Cloud',
-    supabaseDisconnected: 'Desconectado do Supabase',
-    supabaseSyncNow: 'Sincronizar Dados (Pull)',
-    supabasePushNow: 'Fazer Backup no Supabase (Push)',
-    supabaseTestConnection: 'Testar Conexão',
-    supabaseRealtimeActive: 'Realtime Ativo',
-    supabaseTables: 'Tabelas Sincronizadas',
+    // Cloud Database Integration
+    supabaseIntegration: 'Banco de Dados Cloud',
+    supabaseDesc: 'Armazenamento seguro na nuvem e persistência em tempo real',
+    supabaseConnected: 'Conectado à Nuvem',
+    supabaseDisconnected: 'Modo Local',
+    supabaseSyncNow: 'Atualizar Dados (Pull)',
+    supabasePushNow: 'Fazer Backup na Nuvem (Push)',
+    supabaseTestConnection: 'Verificar Conexão',
+    supabaseRealtimeActive: 'Tempo Real Ativo',
+    supabaseTables: 'Tabelas Centralizadas',
 
     // Toasts & feedback
     languageChanged: 'Idioma alterado para Português',
@@ -360,16 +360,16 @@ export const translations = {
     ingresarPrograma: 'Go to program',
     collapseSidebar: 'Collapse sidebar',
 
-    // Supabase Integration
-    supabaseIntegration: 'Supabase Integration',
-    supabaseDesc: 'Cloud PostgreSQL database and real-time synchronization',
-    supabaseConnected: 'Connected to PostgreSQL Cloud',
-    supabaseDisconnected: 'Disconnected from Supabase',
-    supabaseSyncNow: 'Sync Data (Pull)',
-    supabasePushNow: 'Backup to Supabase (Push)',
-    supabaseTestConnection: 'Test Connection',
-    supabaseRealtimeActive: 'Realtime Active',
-    supabaseTables: 'Synchronized Tables',
+    // Cloud Database Integration
+    supabaseIntegration: 'Cloud Database',
+    supabaseDesc: 'Secure cloud storage and real-time persistence',
+    supabaseConnected: 'Connected to Cloud',
+    supabaseDisconnected: 'Local Mode',
+    supabaseSyncNow: 'Update Data (Pull)',
+    supabasePushNow: 'Backup to Cloud (Push)',
+    supabaseTestConnection: 'Verify Connection',
+    supabaseRealtimeActive: 'Real-time Active',
+    supabaseTables: 'System Tables',
 
     // Toasts & feedback
     languageChanged: 'Language changed to English',

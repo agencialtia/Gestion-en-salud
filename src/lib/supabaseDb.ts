@@ -375,6 +375,39 @@ export function fromDbUser(row: any): User {
   };
 }
 
+export function toDbUser(u: Partial<User> & { id: string; email: string; name: string }): any {
+  return {
+    id: u.id,
+    name: u.name || '',
+    email: (u.email || '').toLowerCase().trim(),
+    role: u.role || 'referente',
+    title: u.title || 'Referente de Programas de Salud',
+    comuna: u.comuna || 'Quilicura (DISAM)',
+    establishment: u.establishment || 'Dirección de Salud / Comunal',
+    health_service: u.healthService || 'SSMN (Metropolitano Norte)',
+    avatar: u.avatar || (u.name ? u.name.charAt(0).toUpperCase() : 'U'),
+    photo_url: u.photoUrl || null,
+    phone: u.phone || null,
+  };
+}
+
+export async function upsertUserInSupabase(user: Partial<User> & { id: string; email: string; name: string }): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const payload = toDbUser(user);
+    const { error } = await supabase
+      .from('users')
+      .upsert(payload, { onConflict: 'id' });
+    if (error) {
+      console.warn('Advertencia al guardar usuario en tabla users de Supabase:', error.message);
+    } else {
+      console.log('Usuario guardado exitosamente en la tabla users:', user.email);
+    }
+  } catch (err: any) {
+    console.warn('upsertUserInSupabase error:', err?.message);
+  }
+}
+
 /* ==========================================================================
    DATABASE READ OPERATIONS
    ========================================================================== */

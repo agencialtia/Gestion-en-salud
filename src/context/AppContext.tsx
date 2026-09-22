@@ -125,6 +125,7 @@ import {
   deleteContactFromSupabase,
   upsertQuestionInSupabase,
   deleteQuestionFromSupabase,
+  upsertUserInSupabase,
   generateUUID,
   SupabaseDbStatus,
 } from '../lib/supabaseDb';
@@ -148,72 +149,8 @@ export interface ProgramSummary {
   lastUpdateDate: string;
 }
 
-export const DEFAULT_AUTH_ACCOUNTS: AuthAccount[] = [
-  {
-    id: 'usr_klaus_bauer',
-    name: 'Klaus Bauer',
-    email: 'klausbauer10x@gmail.com',
-    username: 'klaus',
-    passwordHash: 'salud2026',
-    role: 'referente',
-    title: 'Referente Comunal de Programas de Salud',
-    comuna: 'Quilicura (DISAM)',
-    establishment: 'Dirección de Salud / Comunal',
-    healthService: 'SSMN (Metropolitano Norte)',
-    avatar: 'K',
-    authProvider: 'email',
-    emailVerified: true,
-    createdAt: '2025-01-01T08:00:00Z',
-  },
-  {
-    id: 'usr_kbauer_grandon',
-    name: 'Klaus Bauer Grandón',
-    email: 'kbauergrandon@gmail.com',
-    username: 'kbauer',
-    passwordHash: 'salud2026',
-    role: 'referente',
-    title: 'Referente Comunal de Salud Quilicura',
-    comuna: 'Quilicura (DISAM)',
-    establishment: 'Dirección de Salud / Comunal',
-    healthService: 'SSMN (Metropolitano Norte)',
-    avatar: 'K',
-    authProvider: 'email',
-    emailVerified: true,
-    createdAt: '2025-01-01T08:00:00Z',
-  },
-  {
-    id: 'usr_camila_fuentes',
-    name: 'Dra. Camila Fuentes',
-    email: 'camila.fuentes@quilicura.cl',
-    username: 'cfuentes',
-    passwordHash: 'salud2026',
-    role: 'referente',
-    title: 'Coordinadora Técnica de Salud',
-    comuna: 'Quilicura (DISAM)',
-    establishment: 'Cesfam MBH',
-    healthService: 'SSMN (Metropolitano Norte)',
-    avatar: 'C',
-    authProvider: 'email',
-    emailVerified: true,
-    createdAt: '2025-01-10T09:30:00Z',
-  },
-  {
-    id: 'usr_disam_admin',
-    name: 'Dirección DISAM Quilicura',
-    email: 'disam@quilicura.cl',
-    username: 'admin',
-    passwordHash: 'admin2026',
-    role: 'administrador',
-    title: 'Administrador General DISAM',
-    comuna: 'Quilicura (DISAM)',
-    establishment: 'Dirección de Salud / Comunal',
-    healthService: 'SSMN (Metropolitano Norte)',
-    avatar: 'D',
-    authProvider: 'email',
-    emailVerified: true,
-    createdAt: '2025-01-01T08:00:00Z',
-  },
-];
+// Las cuentas de usuario son administradas exclusivamente a través de los registros reales en el sistema
+export const DEFAULT_AUTH_ACCOUNTS: AuthAccount[] = [];
 
 interface ToastMessage {
   id: string;
@@ -224,6 +161,7 @@ interface ToastMessage {
 interface AppContextType {
   // Authentication & Session
   isAuthenticated: boolean;
+  isVerifyingAuthCode: boolean;
   isSupabaseActive: boolean;
   authScreen: AuthScreenType;
   setAuthScreen: (screen: AuthScreenType) => void;
@@ -468,26 +406,54 @@ const THRESHOLDS_KEY = 'quilicura_salud_thresholds_v1';
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Authentication & Accounts State
+  // Authentication & Accounts State (sin cuentas ficticias)
   const [registeredAccounts, setRegisteredAccounts] = useState<AuthAccount[]>(() => {
     try {
       const saved = localStorage.getItem('quilicura_auth_accounts');
-      return saved ? JSON.parse(saved) : DEFAULT_AUTH_ACCOUNTS;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // Filtrar cuentas de prueba obsoletas que pudieran haber quedado en localStorage
+          return parsed.filter(
+            (a: any) =>
+              a.id !== 'usr_klaus_bauer' &&
+              a.id !== 'usr_kbauer_grandon' &&
+              a.id !== 'usr_camila_fuentes' &&
+              a.id !== 'usr_disam_admin' &&
+              !a.id?.startsWith('usr_demo_')
+          );
+        }
+      }
+      return [];
     } catch {
-      return DEFAULT_AUTH_ACCOUNTS;
+      return [];
     }
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('quilicura_is_authenticated');
-      return saved !== null ? saved === 'true' : true;
+      return saved !== null ? saved === 'true' : false;
     } catch {
-      return true;
+      return false;
     }
   });
 
   const [authScreen, setAuthScreen] = useState<AuthScreenType>('login');
+
+  const [isVerifyingAuthCode, setIsVerifyingAuthCode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get('code');
+        const hash = window.location.hash;
+        return Boolean(code || hash.includes('access_token='));
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  });
 
   const [pendingVerificationEmail, setPendingVerificationEmailState] = useState<string | null>(() => {
     try {
@@ -695,6 +661,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       // 1. Handle error query parameter from Supabase
       if (errorCode || hashError) {
+        setIsVerifyingAuthCode(false);
         console.warn('Auth callback error:', errorCode || hashError, errorDesc);
         setAuthScreen('login');
         showToast(
@@ -710,6 +677,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       // 2. If code is present in URL, exchange for session with Supabase
       if (code && isSupabaseConfigured()) {
+        setIsVerifyingAuthCode(true);
         try {
           const supabase = getSupabase();
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
@@ -742,6 +710,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
             setCurrentUser(loggedUser);
             setIsAuthenticated(true);
+            upsertUserInSupabase(loggedUser).catch((err) => console.warn('Sync user on callback error:', err));
             try {
               localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(loggedUser));
               localStorage.setItem('quilicura_is_authenticated', 'true');
@@ -761,6 +730,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           console.error('Unexpected callback error:', err);
           showToast('Ocurrió un error al confirmar la cuenta.', 'error');
         } finally {
+          setIsVerifyingAuthCode(false);
           // Clean the callback params from URL cleanly
           window.history.replaceState({}, document.title, window.location.pathname.replace('/auth/callback', '') || '/');
         }
@@ -769,6 +739,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       // 3. If access_token in hash (Implicit Flow / Password Recovery)
       if (hashAccessToken && isSupabaseConfigured()) {
+        setIsVerifyingAuthCode(false);
         if (hashType === 'recovery') {
           setAuthScreen('reset_password');
           showToast('Enlace de recuperación verificado. Establece tu nueva contraseña.', 'info');
@@ -776,6 +747,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         window.history.replaceState({}, document.title, window.location.pathname.replace('/auth/callback', '') || '/');
         return;
       }
+
+      setIsVerifyingAuthCode(false);
 
       // 4. Initial session check & continuous auth state listener
       if (isSupabaseConfigured()) {
@@ -840,6 +813,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
             setCurrentUser(loggedUser);
             setIsAuthenticated(true);
+            upsertUserInSupabase(loggedUser).catch((err) => console.warn('Sync user on SIGNED_IN error:', err));
             try {
               localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(loggedUser));
               localStorage.setItem('quilicura_is_authenticated', 'true');
@@ -913,12 +887,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         if (error) {
           const msg = error.message.toLowerCase();
-          if (msg.includes('email not confirmed') || msg.includes('not confirmed') || error.status === 400 && msg.includes('confirmed')) {
+          if (msg.includes('email not confirmed') || msg.includes('not confirmed') || (error.status === 400 && msg.includes('confirmed'))) {
             setPendingVerificationEmail(cleanId.toLowerCase());
             setAuthScreen('verify_email');
             return {
               success: false,
-              error: 'Email not confirmed',
+              error: 'Debes confirmar tu correo electrónico antes de iniciar sesión. Revisa tu bandeja de entrada.',
             };
           }
 
@@ -929,21 +903,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             msg.includes('user not registered') ||
             error.status === 400
           ) {
-            // Check if account exists locally before giving error
-            const localAcc = registeredAccounts.find((a) => a.email.toLowerCase() === cleanId.toLowerCase());
-            if (localAcc && localAcc.passwordHash === password) {
-              // Proceed with local account login below
-            } else {
-              return {
-                success: false,
-                error: 'Credenciales inválidas. Verifica tu correo y contraseña.',
-              };
-            }
-          } else if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed') || msg.includes('connection')) {
-            console.warn('Supabase signIn network issue, falling back to local accounts');
-          } else {
-            return { success: false, error: error.message };
+            return {
+              success: false,
+              error: 'Credenciales inválidas. Este usuario no está registrado o la contraseña es incorrecta.',
+            };
           }
+
+          return { success: false, error: error.message };
         }
 
         if (data?.user) {
@@ -968,6 +934,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             authProvider: 'email',
             emailVerified: Boolean(data.user.email_confirmed_at || data.user.confirmed_at),
           };
+
+          upsertUserInSupabase(userToSet).catch((err) => console.warn('Sync user error on login:', err));
 
           setCurrentUser(userToSet);
           try {
@@ -1280,19 +1248,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               error: 'Ya existe una cuenta registrada con este correo electrónico. Por favor inicia sesión.',
             };
           }
-          console.warn('Supabase signup returned error, attempting fallback:', error.message);
-          // If not a duplicate user error, continue to fallback local registration
-        } else {
-          // Also save to registered accounts list for local cache and simulation
-          const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+          return {
+            success: false,
+            error: error.message || 'Error al registrar la cuenta en el servidor de autenticación.',
+          };
+        }
+
+        // Si Supabase devuelve usuario pero identities está vacío, ya existía en Supabase Auth
+        if (signUpData?.user?.identities && signUpData.user.identities.length === 0) {
+          return {
+            success: false,
+            error: 'Ya existe una cuenta registrada con este correo electrónico. Por favor inicia sesión.',
+          };
+        }
+
+        if (signUpData?.user) {
           const nameParts = data.name.trim().split(/\s+/);
           const avatar =
             nameParts.length >= 2
               ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
               : data.name.substring(0, 2).toUpperCase();
 
+          const userId = signUpData.user.id;
+
+          // Guardar de inmediato en la tabla public.users de Supabase
+          await upsertUserInSupabase({
+            id: userId,
+            name: data.name.trim(),
+            email: cleanEmail,
+            role: data.role || 'referente',
+            title: data.title || 'Referente de Programas de Salud',
+            comuna: data.comuna || 'Quilicura (DISAM)',
+            establishment: data.establishment || 'Dirección de Salud / Comunal',
+            healthService: data.healthService || 'SSMN (Metropolitano Norte)',
+            avatar,
+          });
+
           const newAccount: AuthAccount = {
-            id: signUpData?.user?.id || `usr_${Date.now()}`,
+            id: userId,
             email: cleanEmail,
             username: cleanEmail.split('@')[0],
             passwordHash: data.password,
@@ -1304,8 +1297,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             healthService: data.healthService || 'SSMN (Metropolitano Norte)',
             avatar,
             authProvider: 'email',
-            emailVerified: Boolean(signUpData?.user?.email_confirmed_at),
-            verificationCode,
+            emailVerified: Boolean(signUpData.user.email_confirmed_at),
             createdAt: new Date().toISOString(),
           };
 
@@ -1314,11 +1306,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setAuthScreen('verify_email');
           showToast(`Revisa tu correo para confirmar tu cuenta (${cleanEmail})`, 'info');
 
-          return { success: true, verificationCode };
+          return { success: true };
         }
       } catch (err: any) {
-        console.warn('Supabase signUp network error, seamlessly using local storage:', err);
-        // Fall through to fallback / Local account registration
+        console.error('Supabase signUp error:', err);
+        return {
+          success: false,
+          error: err?.message || 'Error de conexión con el servidor al crear la cuenta.',
+        };
       }
     }
 
@@ -1401,6 +1396,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
           setCurrentUser(userToSet);
           setIsAuthenticated(true);
+          upsertUserInSupabase(userToSet).catch((err) => console.warn('Sync user error on OTP verify:', err));
           setPendingVerificationEmail(null);
           setAuthScreen('login');
           showToast('¡Correo electrónico verificado con éxito! Tu cuenta está activa.', 'success');
@@ -2092,7 +2088,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         latencyMs: 0,
         tables: {},
         totalRows: 0,
-        error: 'Supabase no está configurado con credenciales en este entorno. Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en Vercel.',
+        error: 'Servicio en la nube no configurado en este entorno. Configura las variables en Vercel.',
         checkedAt: new Date().toISOString(),
       };
       setSupabaseDbStatus(status);
@@ -2109,11 +2105,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (status.connected) {
         setSupabaseSyncState('synced');
         setSupabaseSyncError(null);
-        showToast('Conexión con Supabase Database verificada exitosamente', 'success');
+        showToast('Conexión con la base de datos verificada exitosamente', 'success');
       } else {
         setSupabaseSyncState('error');
-        setSupabaseSyncError(status.error || 'No se pudo conectar a Supabase');
-        showToast('Supabase: ' + (status.error || 'Verifica credenciales en Vercel'), 'info');
+        setSupabaseSyncError(status.error || 'No se pudo conectar a la base de datos');
+        showToast('Base de datos: ' + (status.error || 'Verifica el estado del servicio en la nube'), 'info');
       }
       return status;
     } catch (err: any) {
@@ -2138,7 +2134,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const syncWithSupabase = useCallback(async (direction: 'pull' | 'push' | 'both' = 'pull') => {
     if (!isSupabaseConfigured()) {
-      showToast('Supabase no está configurado en este entorno. Los datos se mantienen en almacenamiento local seguro.', 'info');
+      showToast('Servicio cloud no configurado en este entorno. Los datos se mantienen en almacenamiento local seguro.', 'info');
       setSupabaseSyncState('idle');
       return;
     }
@@ -2203,19 +2199,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setSupabaseSyncState('synced');
       setSupabaseSyncError(null);
       setIsSupabaseConnected(true);
-      showToast('Sincronización con Supabase completada con éxito', 'success');
+      showToast('Sincronización con la nube completada con éxito', 'success');
     } catch (err: any) {
       setSupabaseSyncState('error');
       setSupabaseSyncError(err?.message || 'Error de sincronización');
-      showToast('Error al sincronizar con Supabase: ' + (err?.message || ''), 'warning');
+      showToast('Error al sincronizar con la nube: ' + (err?.message || ''), 'warning');
     }
   }, []);
 
   const handlePushAllDataToSupabase = useCallback(async () => {
     if (!isSupabaseConfigured()) {
-      showToast('Supabase no está configurado en este entorno. Configura las credenciales en Vercel para subir.', 'info');
+      showToast('Servicio cloud no configurado en este entorno. Configura las variables para subir.', 'info');
       setSupabaseSyncState('idle');
-      return { success: false, errors: ['Supabase no configurado en este entorno'], insertedCount: 0 };
+      return { success: false, errors: ['Servicio en la nube no configurado en este entorno'], insertedCount: 0 };
     }
 
     setSupabaseSyncState('syncing');
@@ -2231,7 +2227,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
       if (res.success) {
         setSupabaseSyncState('synced');
-        showToast(`Datos locales sincronizados con Supabase (${res.insertedCount} registros)`, 'success');
+        showToast(`Datos locales respaldados en la nube (${res.insertedCount} registros)`, 'success');
       } else {
         setSupabaseSyncState('error');
         showToast(`Sincronización con avisos: ${res.errors.length} fallos`, 'warning');
@@ -2239,7 +2235,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return res;
     } catch (err: any) {
       setSupabaseSyncState('error');
-      showToast('Error al subir datos a Supabase', 'error');
+      showToast('Error al respaldar datos en la nube', 'error');
       return { success: false, errors: [err?.message || 'Error desconocido'], insertedCount: 0 };
     }
   }, [programs, tasks, purchases, meetings, indicators, contacts, questions]);
@@ -5015,6 +5011,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     <AppContext.Provider
       value={{
         isAuthenticated,
+        isVerifyingAuthCode,
         isSupabaseActive: isSupabaseConfigured(),
         authScreen,
         setAuthScreen,

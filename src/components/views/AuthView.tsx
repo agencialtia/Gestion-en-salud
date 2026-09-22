@@ -1091,7 +1091,7 @@ export const AuthView: React.FC = () => {
                     <button
                       id="btn-click-email-confirmation-link"
                       type="button"
-                      onClick={() => handleDirectLinkVerify(pendingVerificationEmail || regEmail || 'klausbauer10x@gmail.com')}
+                      onClick={() => handleDirectLinkVerify(pendingVerificationEmail || regEmail || '')}
                       className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition inline-flex items-center gap-2"
                     >
                       <CheckCircle2 className="w-4 h-4" />
