@@ -128,6 +128,7 @@ import {
   upsertAlertInSupabase,
   deleteAlertFromSupabase,
   upsertProgramInSupabase,
+  deleteProgramFromSupabase,
   upsertEstablishmentInSupabase,
   deleteEstablishmentFromSupabase,
   upsertFinancialPeriodInSupabase,
@@ -193,7 +194,7 @@ interface AppContextType {
 
   // Master data
   currentUser: User;
-  updateCurrentUser: (updates: Partial<User>) => void;
+  updateCurrentUser: (updates: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   establishments: Establishment[];
   updateEstablishment: (id: string, updates: Partial<Establishment>) => void;
   addEstablishment: (est: Omit<Establishment, 'id'>) => Establishment;
@@ -1698,59 +1699,62 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
 
-  const updateCurrentUser = (updates: Partial<User>) => {
-    let nextUserToPersist: User = currentUser;
-    setCurrentUser((prev) => {
-      let avatar = prev.avatar;
-      if (updates.name && (!updates.avatar || updates.avatar === prev.avatar)) {
-        const parts = updates.name.trim().split(/\s+/);
-        if (parts.length >= 2) {
-          avatar = (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-        } else if (parts.length === 1 && parts[0].length > 0) {
-          avatar = parts[0].substring(0, 2).toUpperCase();
-        }
+  const updateCurrentUser = async (updates: Partial<User>): Promise<{ success: boolean; error?: string }> => {
+    let avatar = updates.avatar || currentUser.avatar;
+    if (updates.name && (!updates.avatar || updates.avatar === currentUser.avatar)) {
+      const parts = updates.name.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        avatar = (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      } else if (parts.length === 1 && parts[0].length > 0) {
+        avatar = parts[0].substring(0, 2).toUpperCase();
       }
-      const nextUser = { ...prev, ...updates, ...(avatar ? { avatar } : {}) };
-      nextUserToPersist = nextUser;
-      try {
-        localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(nextUser));
-      } catch (e) {
-        console.error(e);
-      }
-      return nextUser;
-    });
+    }
+
+    const nextUser: User = {
+      ...currentUser,
+      ...updates,
+      ...(avatar ? { avatar } : {}),
+    };
+
+    setCurrentUser(nextUser);
+
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(nextUser));
+    } catch (e) {
+      console.error(e);
+    }
 
     // Also update registered accounts cache if exists
-    if (nextUserToPersist.email) {
+    if (nextUser.email) {
       setRegisteredAccounts((prev) =>
         prev.map((a) =>
-          a.email.toLowerCase() === nextUserToPersist.email.toLowerCase()
-            ? { ...a, name: nextUserToPersist.name, role: nextUserToPersist.role, title: nextUserToPersist.title }
+          a.email.toLowerCase() === nextUser.email.toLowerCase()
+            ? { ...a, name: nextUser.name, role: nextUser.role, title: nextUser.title }
             : a
         )
       );
     }
 
-    // Background sync to Supabase (public.users & auth user_metadata)
+    // Direct sync to Supabase (public.users & auth user_metadata)
+    let syncResult: { success: boolean; error?: string } = { success: true };
     if (isSupabaseConfigured()) {
-      upsertUserInSupabase(nextUserToPersist).catch((err) => {
-        console.warn('Failed to upsert user in Supabase:', err?.message);
-      });
+      syncResult = await upsertUserInSupabase(nextUser);
+      if (!syncResult.success) {
+        console.warn('Advertencia al sincronizar usuario con Supabase:', syncResult.error);
+      }
     }
 
     showToast('Perfil de usuario actualizado exitosamente', 'success');
+    return syncResult;
   };
 
   const updateEstablishment = (id: string, updates: Partial<Establishment>) => {
-    let updatedEst: Establishment | undefined;
+    const existing = establishments.find((e) => e.id === id);
+    if (!existing) return;
+    const updatedEst: Establishment = { ...existing, ...updates };
+
     setEstablishments((prev) => {
-      const next = prev.map((e) => {
-        if (e.id === id) {
-          updatedEst = { ...e, ...updates };
-          return updatedEst;
-        }
-        return e;
-      });
+      const next = prev.map((e) => (e.id === id ? updatedEst : e));
       try {
         localStorage.setItem(`${STORAGE_KEY}_establishments`, JSON.stringify(next));
       } catch (err) {
@@ -1759,7 +1763,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return next;
     });
 
-    if (updatedEst && isSupabaseConfigured()) {
+    if (isSupabaseConfigured()) {
       upsertEstablishmentInSupabase(updatedEst).catch((err) =>
         console.warn('Error syncing establishment update to Supabase:', err?.message)
       );
@@ -2481,6 +2485,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         pullAllFromSupabase().then((d) => {
           if (d.indicators?.length) setIndicators(d.indicators);
         }).catch(() => {});
+      } else if (event.table === 'contacts') {
+        pullAllFromSupabase().then((d) => {
+          if (d.contacts?.length) setContacts(d.contacts);
+        }).catch(() => {});
+      } else if (event.table === 'questions') {
+        pullAllFromSupabase().then((d) => {
+          if (d.questions?.length) setQuestions(d.questions);
+        }).catch(() => {});
+      } else if (event.table === 'health_programs') {
+        pullAllFromSupabase().then((d) => {
+          if (d.programs?.length) setPrograms(d.programs);
+        }).catch(() => {});
+      } else if (event.table === 'establishments') {
+        pullAllFromSupabase().then((d) => {
+          if (d.establishments?.length) setEstablishments(d.establishments);
+        }).catch(() => {});
+      } else if (event.table === 'financial_periods') {
+        pullAllFromSupabase().then((d) => {
+          if (d.financialPeriods?.length) setFinancialPeriods(d.financialPeriods);
+        }).catch(() => {});
+      } else if (event.table === 'budget_components') {
+        pullAllFromSupabase().then((d) => {
+          if (d.budgetComponents?.length) setBudgetComponents(d.budgetComponents);
+        }).catch(() => {});
+      } else if (event.table === 'users' && event.newRecord) {
+        if (event.newRecord.email && currentUser.email && event.newRecord.email.toLowerCase() === currentUser.email.toLowerCase()) {
+          setCurrentUser((prev) => ({
+            ...prev,
+            name: event.newRecord.name || prev.name,
+            phone: event.newRecord.phone !== undefined ? event.newRecord.phone : prev.phone,
+            phonePrefix: event.newRecord.phone_prefix !== undefined ? event.newRecord.phone_prefix : prev.phonePrefix,
+            instagram: event.newRecord.instagram !== undefined ? event.newRecord.instagram : prev.instagram,
+            country: event.newRecord.country || prev.country,
+            role: event.newRecord.role || prev.role,
+            title: event.newRecord.title || prev.title,
+            comuna: event.newRecord.comuna || prev.comuna,
+            establishment: event.newRecord.establishment || prev.establishment,
+            healthService: event.newRecord.health_service || prev.healthService,
+            budgetYear: event.newRecord.budget_year || prev.budgetYear,
+          }));
+        }
       }
     });
 
@@ -3151,6 +3196,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setTasks((prev) => [duplicated, ...prev]);
     logAudit('Tarea', newId, 'crear', `Tarea duplicada a partir de ID ${source.id}`);
     showToast(`Tarea duplicada con éxito: "${duplicated.title}"`, 'success');
+    if (isSupabaseConfigured()) {
+      upsertTaskInSupabase(duplicated).catch((err) => console.warn('Supabase sync task error:', err));
+    }
     return duplicated;
   };
 
@@ -3177,90 +3225,95 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const restoreTask = (id: string) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== id) return t;
-        return {
-          ...t,
-          archived: false,
-          deletedAt: undefined,
-          deletedBy: undefined,
-        };
-      })
-    );
+    const target = tasks.find((t) => t.id === id);
+    if (!target) return;
+    const restored: Task = {
+      ...target,
+      archived: false,
+      deletedAt: undefined,
+      deletedBy: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+    setTasks((prev) => prev.map((t) => (t.id === id ? restored : t)));
     logAudit('Tarea', id, 'restaurar', `Tarea ${id} restaurada`);
     showToast('Tarea restaurada', 'success');
+    if (isSupabaseConfigured()) {
+      upsertTaskInSupabase(restored).catch((err) => console.warn('Supabase restore task error:', err));
+    }
   };
 
   const addChecklistItem = (taskId: string, description: string) => {
     const trimmed = description.trim();
     if (!trimmed) return;
+    const target = tasks.find((t) => t.id === taskId);
+    if (!target) return;
     const newItem: TaskChecklistItem = {
       id: `chk_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       description: trimmed,
       isCompleted: false,
     };
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId) return t;
-        const currentList = t.checklist || [];
-        return {
-          ...t,
-          checklist: [...currentList, newItem],
-          updatedAt: new Date().toISOString(),
-        };
-      })
-    );
+    const updated: Task = {
+      ...target,
+      checklist: [...(target.checklist || []), newItem],
+      updatedAt: new Date().toISOString(),
+    };
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
     showToast('Ítem agregado al checklist', 'info');
+    if (isSupabaseConfigured()) {
+      upsertTaskInSupabase(updated).catch((err) => console.warn('Supabase checklist task error:', err));
+    }
   };
 
   const toggleChecklistItem = (taskId: string, itemId: string) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId) return t;
-        const currentList = t.checklist || [];
-        const updatedList = currentList.map((item) =>
-          item.id === itemId ? { ...item, isCompleted: !item.isCompleted } : item
-        );
-        return {
-          ...t,
-          checklist: updatedList,
-          updatedAt: new Date().toISOString(),
-        };
-      })
+    const target = tasks.find((t) => t.id === taskId);
+    if (!target) return;
+    const currentList = target.checklist || [];
+    const updatedList = currentList.map((item) =>
+      item.id === itemId ? { ...item, isCompleted: !item.isCompleted } : item
     );
+    const updated: Task = {
+      ...target,
+      checklist: updatedList,
+      updatedAt: new Date().toISOString(),
+    };
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+    if (isSupabaseConfigured()) {
+      upsertTaskInSupabase(updated).catch((err) => console.warn('Supabase checklist error:', err));
+    }
   };
 
   const updateChecklistItem = (taskId: string, itemId: string, description: string) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId) return t;
-        const currentList = t.checklist || [];
-        const updatedList = currentList.map((item) =>
-          item.id === itemId ? { ...item, description: description.trim() } : item
-        );
-        return {
-          ...t,
-          checklist: updatedList,
-          updatedAt: new Date().toISOString(),
-        };
-      })
+    const target = tasks.find((t) => t.id === taskId);
+    if (!target) return;
+    const currentList = target.checklist || [];
+    const updatedList = currentList.map((item) =>
+      item.id === itemId ? { ...item, description: description.trim() } : item
     );
+    const updated: Task = {
+      ...target,
+      checklist: updatedList,
+      updatedAt: new Date().toISOString(),
+    };
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+    if (isSupabaseConfigured()) {
+      upsertTaskInSupabase(updated).catch((err) => console.warn('Supabase checklist error:', err));
+    }
   };
 
   const removeChecklistItem = (taskId: string, itemId: string) => {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId) return t;
-        const currentList = t.checklist || [];
-        return {
-          ...t,
-          checklist: currentList.filter((item) => item.id !== itemId),
-          updatedAt: new Date().toISOString(),
-        };
-      })
-    );
+    const target = tasks.find((t) => t.id === taskId);
+    if (!target) return;
+    const currentList = target.checklist || [];
+    const updated: Task = {
+      ...target,
+      checklist: currentList.filter((item) => item.id !== itemId),
+      updatedAt: new Date().toISOString(),
+    };
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
     showToast('Ítem eliminado del checklist', 'info');
+    if (isSupabaseConfigured()) {
+      upsertTaskInSupabase(updated).catch((err) => console.warn('Supabase checklist error:', err));
+    }
   };
 
   const addIndicator = (indData: Omit<Indicator, 'id' | 'measurements' | 'createdAt' | 'updatedAt'>) => {
@@ -3284,48 +3337,59 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setIndicators((prev) => [newInd, ...prev]);
     logAudit('Indicador', newInd.id, 'crear', `Nuevo indicador: ${newInd.code} - ${newInd.name}`);
     showToast(`Indicador ${newInd.code} creado`, 'success');
+    if (isSupabaseConfigured()) {
+      upsertIndicatorInSupabase(newInd).catch((err) => console.warn('Supabase sync indicator error:', err));
+    }
     return newInd;
   };
 
   const updateIndicator = (id: string, updates: Partial<Indicator>) => {
-    setIndicators((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, ...updates, updatedAt: new Date().toISOString() } : i))
-    );
+    const existing = indicators.find((i) => i.id === id);
+    if (!existing) return;
+    const updatedInd: Indicator = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+    setIndicators((prev) => prev.map((i) => (i.id === id ? updatedInd : i)));
     logAudit('Indicador', id, 'editar', `Indicador ${id} actualizado`);
     showToast('Indicador actualizado y semáforos recalculados', 'info');
+    if (isSupabaseConfigured()) {
+      upsertIndicatorInSupabase(updatedInd).catch((err) => console.warn('Supabase update indicator error:', err));
+    }
   };
 
   const recordMeasurement = (indicatorId: string, result: number, period: string, notes?: string) => {
-    setIndicators((prev) =>
-      prev.map((ind) => {
-        if (ind.id !== indicatorId) return ind;
-        const newMeas: IndicatorMeasurement = {
-          id: `m_${Date.now()}`,
-          indicatorId,
-          period,
-          date: todayStr,
-          result,
-          target: ind.periodTarget,
-          notes,
-          registeredBy: currentUser.name,
-        };
-        return {
-          ...ind,
-          currentResult: result,
-          cutoffDate: todayStr,
-          measurements: [...ind.measurements, newMeas],
-          updatedAt: new Date().toISOString(),
-        };
-      })
-    );
+    const ind = indicators.find((i) => i.id === indicatorId);
+    if (!ind) return;
+    const newMeas: IndicatorMeasurement = {
+      id: `m_${Date.now()}`,
+      indicatorId,
+      period,
+      date: todayStr,
+      result,
+      target: ind.periodTarget,
+      notes,
+      registeredBy: currentUser.name,
+    };
+    const updatedInd: Indicator = {
+      ...ind,
+      currentResult: result,
+      cutoffDate: todayStr,
+      measurements: [...ind.measurements, newMeas],
+      updatedAt: new Date().toISOString(),
+    };
+    setIndicators((prev) => prev.map((i) => (i.id === indicatorId ? updatedInd : i)));
     logAudit('Indicador', indicatorId, 'editar', `Medición registrada para período ${period}: ${result}`);
     showToast('Nueva medición registrada exitosamente', 'success');
+    if (isSupabaseConfigured()) {
+      upsertIndicatorInSupabase(updatedInd).catch((err) => console.warn('Supabase indicator measurement error:', err));
+    }
   };
 
   const deleteIndicator = (id: string) => {
     setIndicators((prev) => prev.map((i) => (i.id === id ? { ...i, archived: true } : i)));
     logAudit('Indicador', id, 'eliminar_logico', `Indicador ${id} archivado`);
     showToast('Indicador archivado', 'warning');
+    if (isSupabaseConfigured()) {
+      deleteIndicatorFromSupabase(id).catch((err) => console.warn('Supabase delete indicator error:', err));
+    }
   };
 
   const updateFinancialPeriod = (id: string, updates: Partial<FinancialPeriod>) => {
@@ -3466,32 +3530,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setPurchases((prev) => [newPur, ...prev]);
     logAudit('Compras', newPur.id, 'crear', `Nueva solicitud de compra: ${newPur.category || newPur.itemOrService}`);
     showToast(`Solicitud "${newPur.category || newPur.itemOrService}" registrada`, 'success');
+    if (isSupabaseConfigured()) {
+      upsertPurchaseInSupabase(newPur).catch((err) => console.warn('Supabase sync purchase error:', err));
+    }
     return newPur;
   };
 
   const updatePurchase = (id: string, updates: Partial<Purchase>) => {
-    setPurchases((prev) =>
-      prev.map((p) => {
-        if (p.id !== id) return p;
-        const merged: Purchase = {
-          ...p,
-          ...updates,
-          updatedAt: new Date().toISOString(),
-        };
-        // Si no se pasó un macroState explícito en updates, recalcular según microestados
-        if (!updates.macroState) {
-          merged.macroState = getPurchaseEffectiveMacroState(merged);
-        }
-        return merged;
-      })
-    );
+    const existing = purchases.find((p) => p.id === id);
+    if (!existing) return;
+    const merged: Purchase = {
+      ...existing,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    if (!updates.macroState) {
+      merged.macroState = getPurchaseEffectiveMacroState(merged);
+    }
+    setPurchases((prev) => prev.map((p) => (p.id === id ? merged : p)));
     logAudit('Compras', id, 'editar', `Compra ${id} actualizada`);
+    if (isSupabaseConfigured()) {
+      upsertPurchaseInSupabase(merged).catch((err) => console.warn('Supabase update purchase error:', err));
+    }
   };
 
   const deletePurchase = (id: string) => {
     setPurchases((prev) => prev.map((p) => (p.id === id ? { ...p, archived: true } : p)));
     logAudit('Compras', id, 'eliminar_logico', `Compra ${id} archivada`);
     showToast('Compra archivada', 'warning');
+    if (isSupabaseConfigured()) {
+      deletePurchaseFromSupabase(id).catch((err) => console.warn('Supabase delete purchase error:', err));
+    }
   };
 
   const addMeeting = (meetingData: Omit<Meeting, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -3523,14 +3592,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setMeetings((prev) => [newMeeting, ...prev]);
     logAudit('Reuniones', newMeeting.id, 'crear', `Reunión registrada: "${newMeeting.title}" (${newMeeting.type})`);
     showToast(`Instancia "${newMeeting.title}" guardada exitosamente`, 'success');
+    if (isSupabaseConfigured()) {
+      upsertMeetingInSupabase(newMeeting).catch((err) => console.warn('Supabase sync meeting error:', err));
+    }
     return newMeeting;
   };
 
   const updateMeeting = (id: string, updates: Partial<Meeting>) => {
-    setMeetings((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, ...updates, updatedAt: new Date().toISOString() } : m))
-    );
+    const existing = meetings.find((m) => m.id === id);
+    if (!existing) return;
+    const updatedMeeting: Meeting = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+    setMeetings((prev) => prev.map((m) => (m.id === id ? updatedMeeting : m)));
     logAudit('Reuniones', id, 'editar', `Reunión ${id} actualizada`);
+    if (isSupabaseConfigured()) {
+      upsertMeetingInSupabase(updatedMeeting).catch((err) => console.warn('Supabase update meeting error:', err));
+    }
   };
 
   const addMeetingAgreement = (meetingId: string, description: string, decisionType: 'acuerdo' | 'definicion' | 'resolucion' = 'acuerdo'): MeetingAgreement => {
@@ -3543,17 +3619,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       createdAt: new Date().toISOString(),
     };
 
+    let updatedMeeting: Meeting | undefined;
     setMeetings((prev) =>
       prev.map((m) => {
         if (m.id !== meetingId) return m;
         const currentAgreements = Array.isArray(m.agreements) ? m.agreements : [];
-        return {
+        updatedMeeting = {
           ...m,
           agreements: [...currentAgreements, newAgr],
           updatedAt: new Date().toISOString(),
         };
+        return updatedMeeting;
       })
     );
+
+    if (updatedMeeting && isSupabaseConfigured()) {
+      upsertMeetingInSupabase(updatedMeeting).catch((err) => console.warn('Supabase agreement error:', err));
+    }
 
     logAudit('Reuniones', meetingId, 'crear', `Acuerdo agregado: "${description}"`);
     showToast('Acuerdo registrado', 'success');
@@ -3561,32 +3643,42 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateMeetingAgreement = (meetingId: string, agreementId: string, updates: Partial<MeetingAgreement>) => {
+    let updatedMeeting: Meeting | undefined;
     setMeetings((prev) =>
       prev.map((m) => {
         if (m.id !== meetingId) return m;
         const currentAgreements = Array.isArray(m.agreements) ? m.agreements : [];
-        return {
+        updatedMeeting = {
           ...m,
           agreements: currentAgreements.map((a) => (a.id === agreementId ? { ...a, ...updates } : a)),
           updatedAt: new Date().toISOString(),
         };
+        return updatedMeeting;
       })
     );
+    if (updatedMeeting && isSupabaseConfigured()) {
+      upsertMeetingInSupabase(updatedMeeting).catch((err) => console.warn('Supabase agreement update error:', err));
+    }
     logAudit('Reuniones', meetingId, 'editar', `Acuerdo actualizado: ${agreementId}`);
   };
 
   const deleteMeetingAgreement = (meetingId: string, agreementId: string) => {
+    let updatedMeeting: Meeting | undefined;
     setMeetings((prev) =>
       prev.map((m) => {
         if (m.id !== meetingId) return m;
         const currentAgreements = Array.isArray(m.agreements) ? m.agreements : [];
-        return {
+        updatedMeeting = {
           ...m,
           agreements: currentAgreements.filter((a) => a.id !== agreementId),
           updatedAt: new Date().toISOString(),
         };
+        return updatedMeeting;
       })
     );
+    if (updatedMeeting && isSupabaseConfigured()) {
+      upsertMeetingInSupabase(updatedMeeting).catch((err) => console.warn('Supabase agreement delete error:', err));
+    }
     logAudit('Reuniones', meetingId, 'eliminar_logico', `Acuerdo eliminado: ${agreementId}`);
     showToast('Acuerdo eliminado', 'info');
   };
@@ -3606,16 +3698,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       updatedAt: new Date().toISOString(),
     };
 
+    let updatedMeeting: Meeting | undefined;
     setMeetings((prev) =>
       prev.map((m) => {
         if (m.id !== meetingId) return m;
-        return {
+        updatedMeeting = {
           ...m,
           commitments: [...(m.commitments || []), newCom],
           updatedAt: new Date().toISOString(),
         };
+        return updatedMeeting;
       })
     );
+
+    if (updatedMeeting && isSupabaseConfigured()) {
+      upsertMeetingInSupabase(updatedMeeting).catch((err) => console.warn('Supabase commitment add error:', err));
+    }
 
     logAudit('Reuniones', meetingId, 'crear', `Compromiso agregado: "${newCom.description}" para ${newCom.responsible}`);
     showToast('Compromiso registrado en la sesión', 'success');
@@ -3626,6 +3724,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     let linkedTaskId: string | undefined;
     let targetStatus: CommitmentStatus | undefined;
     const nowIso = new Date().toISOString();
+    let updatedMeeting: Meeting | undefined;
 
     setMeetings((prev) =>
       prev.map((m) => {
@@ -3643,13 +3742,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             updatedAt: nowIso,
           };
         });
-        return {
+        updatedMeeting = {
           ...m,
           commitments: updatedCommitments,
           updatedAt: nowIso,
         };
+        return updatedMeeting;
       })
     );
+
+    if (updatedMeeting && isSupabaseConfigured()) {
+      upsertMeetingInSupabase(updatedMeeting).catch((err) => console.warn('Supabase commitment update error:', err));
+    }
 
     // Sincronizar automáticamente con la tarea vinculada
     if (linkedTaskId) {
@@ -3677,16 +3781,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const deleteMeetingCommitment = (meetingId: string, commitmentId: string) => {
+    let updatedMeeting: Meeting | undefined;
     setMeetings((prev) =>
       prev.map((m) => {
         if (m.id !== meetingId) return m;
-        return {
+        updatedMeeting = {
           ...m,
           commitments: (m.commitments || []).filter((c) => c.id !== commitmentId),
           updatedAt: new Date().toISOString(),
         };
+        return updatedMeeting;
       })
     );
+    if (updatedMeeting && isSupabaseConfigured()) {
+      upsertMeetingInSupabase(updatedMeeting).catch((err) => console.warn('Supabase commitment delete error:', err));
+    }
     logAudit('Reuniones', meetingId, 'eliminar_logico', `Compromiso ID ${commitmentId} eliminado`);
     showToast('Compromiso eliminado', 'warning');
   };
@@ -3749,18 +3858,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
 
     // Guardar taskId en el compromiso
+    let updatedMeeting: Meeting | undefined;
     setMeetings((prev) =>
       prev.map((m) => {
         if (m.id !== meetingId) return m;
-        return {
+        updatedMeeting = {
           ...m,
           commitments: (m.commitments || []).map((c) =>
             c.id === commitmentId ? { ...c, taskId: newTask.id, updatedAt: new Date().toISOString() } : c
           ),
           updatedAt: new Date().toISOString(),
         };
+        return updatedMeeting;
       })
     );
+
+    if (updatedMeeting && isSupabaseConfigured()) {
+      upsertMeetingInSupabase(updatedMeeting).catch((err) => console.warn('Supabase meeting task link error:', err));
+    }
 
     logAudit('Reuniones', meetingId, 'convertir_tarea', `Compromiso "${commitment.description}" convertido en tarea ID ${newTask.id}`);
     showToast('Compromiso sincronizado como tarea oficial en tiempo real', 'success');
@@ -3771,6 +3886,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setMeetings((prev) => prev.map((m) => (m.id === id ? { ...m, archived: true } : m)));
     logAudit('Reuniones', id, 'eliminar_logico', `Reunión ${id} archivada`);
     showToast('Instancia archivada', 'warning');
+    if (isSupabaseConfigured()) {
+      deleteMeetingFromSupabase(id).catch((err) => console.warn('Supabase delete meeting error:', err));
+    }
   };
 
   // Google Calendar Integration Functions
@@ -4175,21 +4293,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setQuestions((prev) => [newQ, ...prev]);
     logAudit('Preguntas', newQ.id, 'crear', `Pregunta registrada: "${newQ.question}"`);
     showToast('Pregunta registrada', 'success');
+    if (isSupabaseConfigured()) {
+      upsertQuestionInSupabase(newQ).catch((err) => console.warn('Supabase sync question error:', err));
+    }
     return newQ;
   };
 
   const updateQuestion = (id: string, updates: Partial<Question>) => {
-    setQuestions((prev) =>
-      prev.map((q) => (q.id === id ? { ...q, ...updates, updatedAt: new Date().toISOString() } : q))
-    );
+    const existing = questions.find((q) => q.id === id);
+    if (!existing) return;
+    const updatedQ: Question = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+    setQuestions((prev) => prev.map((q) => (q.id === id ? updatedQ : q)));
     logAudit('Preguntas', id, 'editar', `Pregunta ${id} modificada`);
     showToast('Pregunta actualizada', 'info');
+    if (isSupabaseConfigured()) {
+      upsertQuestionInSupabase(updatedQ).catch((err) => console.warn('Supabase update question error:', err));
+    }
   };
 
   const deleteQuestion = (id: string) => {
     setQuestions((prev) => prev.map((q) => (q.id === id ? { ...q, archived: true } : q)));
     logAudit('Preguntas', id, 'eliminar_logico', `Pregunta ${id} archivada`);
     showToast('Pregunta archivada', 'warning');
+    if (isSupabaseConfigured()) {
+      deleteQuestionFromSupabase(id).catch((err) => console.warn('Supabase delete question error:', err));
+    }
   };
 
   const addQuestionFollowUp = (
@@ -4205,17 +4333,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       createdBy: currentUser.name,
     };
 
+    let updatedQ: Question | undefined;
     setQuestions((prev) =>
       prev.map((q) => {
         if (q.id !== questionId) return q;
         const currentFollowUps = q.followUps || [];
-        return {
+        updatedQ = {
           ...q,
           followUps: [newFollowUp, ...currentFollowUps],
           updatedAt: new Date().toISOString(),
         };
+        return updatedQ;
       })
     );
+
+    if (updatedQ && isSupabaseConfigured()) {
+      upsertQuestionInSupabase(updatedQ).catch((err) => console.warn('Supabase question follow-up error:', err));
+    }
 
     logAudit('Preguntas', questionId, 'seguimiento', `Hito de seguimiento registrado: ${followUp.note.substring(0, 50)}...`);
     showToast('Seguimiento registrado con éxito', 'success');
@@ -4223,16 +4357,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const deleteQuestionFollowUp = (questionId: string, followUpId: string) => {
+    let updatedQ: Question | undefined;
     setQuestions((prev) =>
       prev.map((q) => {
         if (q.id !== questionId) return q;
-        return {
+        updatedQ = {
           ...q,
           followUps: (q.followUps || []).filter((f) => f.id !== followUpId),
           updatedAt: new Date().toISOString(),
         };
+        return updatedQ;
       })
     );
+    if (updatedQ && isSupabaseConfigured()) {
+      upsertQuestionInSupabase(updatedQ).catch((err) => console.warn('Supabase question follow-up delete error:', err));
+    }
     showToast('Hito de seguimiento eliminado', 'info');
   };
 
@@ -4303,18 +4442,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     setTasks((prev) => [newTask, ...prev]);
 
+    let updatedQ: Question | undefined;
     setQuestions((prev) =>
-      prev.map((q) =>
-        q.id === questionId
-          ? {
-              ...q,
-              taskId: newTask.id,
-              status: q.status === 'abierta' || q.status === 'pendiente' ? 'en_consulta' : q.status,
-              updatedAt: new Date().toISOString(),
-            }
-          : q
-      )
+      prev.map((q) => {
+        if (q.id === questionId) {
+          updatedQ = {
+            ...q,
+            taskId: newTask.id,
+            status: q.status === 'abierta' || q.status === 'pendiente' ? 'en_consulta' : q.status,
+            updatedAt: new Date().toISOString(),
+          };
+          return updatedQ;
+        }
+        return q;
+      })
     );
+
+    if (updatedQ && isSupabaseConfigured()) {
+      upsertQuestionInSupabase(updatedQ).catch((err) => console.warn('Supabase question task link error:', err));
+    }
 
     logAudit('Preguntas', questionId, 'convertir_tarea', `Se creó tarea operativa vinculada: "${newTask.title}"`);
     showToast('Tarea de seguimiento creada y sincronizada con éxito', 'success');
@@ -4323,20 +4469,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const resolveQuestion = (questionId: string, finalAnswer: string, sourceOfResponse?: string) => {
     const resolvedDate = new Date().toISOString().substring(0, 10);
+    let updatedQ: Question | undefined;
     setQuestions((prev) =>
-      prev.map((q) =>
-        q.id === questionId
-          ? {
-              ...q,
-              status: 'resuelta',
-              finalAnswer,
-              sourceOfResponse: sourceOfResponse || q.sourceOfResponse || 'Gestión Directa',
-              resolvedDate,
-              updatedAt: new Date().toISOString(),
-            }
-          : q
-      )
+      prev.map((q) => {
+        if (q.id === questionId) {
+          updatedQ = {
+            ...q,
+            status: 'resuelta',
+            finalAnswer,
+            sourceOfResponse: sourceOfResponse || q.sourceOfResponse || 'Gestión Directa',
+            resolvedDate,
+            updatedAt: new Date().toISOString(),
+          };
+          return updatedQ;
+        }
+        return q;
+      })
     );
+
+    if (updatedQ && isSupabaseConfigured()) {
+      upsertQuestionInSupabase(updatedQ).catch((err) => console.warn('Supabase resolve question error:', err));
+    }
 
     logAudit('Preguntas', questionId, 'resolver', `Consulta resuelta: "${finalAnswer.substring(0, 60)}..."`);
     showToast('Consulta marcada como resuelta', 'success');
@@ -4344,52 +4497,68 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const closeQuestionWithoutAnswer = (questionId: string, reason?: string) => {
     const resolvedDate = new Date().toISOString().substring(0, 10);
+    let updatedQ: Question | undefined;
     setQuestions((prev) =>
-      prev.map((q) =>
-        q.id === questionId
-          ? {
-              ...q,
-              status: 'cerrada_sin_respuesta',
-              closedReason: reason || 'Cerrada sin respuesta formal por obsolescencia o desistimiento.',
-              resolvedDate,
-              updatedAt: new Date().toISOString(),
-            }
-          : q
-      )
+      prev.map((q) => {
+        if (q.id === questionId) {
+          updatedQ = {
+            ...q,
+            status: 'cerrada_sin_respuesta',
+            closedReason: reason || 'Cerrada sin respuesta formal por obsolescencia o desistimiento.',
+            resolvedDate,
+            updatedAt: new Date().toISOString(),
+          };
+          return updatedQ;
+        }
+        return q;
+      })
     );
+
+    if (updatedQ && isSupabaseConfigured()) {
+      upsertQuestionInSupabase(updatedQ).catch((err) => console.warn('Supabase close question error:', err));
+    }
 
     logAudit('Preguntas', questionId, 'cerrar', `Consulta cerrada sin respuesta: ${reason || 'Sin motivo'}`);
     showToast('Consulta cerrada sin respuesta', 'warning');
   };
 
   const toggleQuestionForNextMeeting = (questionId: string) => {
+    let updatedQ: Question | undefined;
     setQuestions((prev) =>
       prev.map((q) => {
         if (q.id !== questionId) return q;
         const nextVal = !q.forNextMeeting;
-        return {
+        updatedQ = {
           ...q,
           forNextMeeting: nextVal,
           updatedAt: new Date().toISOString(),
         };
+        return updatedQ;
       })
     );
+    if (updatedQ && isSupabaseConfigured()) {
+      upsertQuestionInSupabase(updatedQ).catch((err) => console.warn('Supabase toggle question meeting error:', err));
+    }
     showToast('Estado para orden del día de reunión actualizado', 'info');
   };
 
   const linkQuestionToMeeting = (questionId: string, meetingId?: string) => {
+    let updatedQ: Question | undefined;
     setQuestions((prev) =>
-      prev.map((q) =>
-        q.id === questionId
-          ? {
-              ...q,
-              meetingId: meetingId || undefined,
-              forNextMeeting: Boolean(meetingId),
-              updatedAt: new Date().toISOString(),
-            }
-          : q
-      )
+      prev.map((q) => {
+        if (q.id !== questionId) return q;
+        updatedQ = {
+          ...q,
+          meetingId: meetingId || undefined,
+          forNextMeeting: Boolean(meetingId),
+          updatedAt: new Date().toISOString(),
+        };
+        return updatedQ;
+      })
     );
+    if (updatedQ && isSupabaseConfigured()) {
+      upsertQuestionInSupabase(updatedQ).catch((err) => console.warn('Supabase link question meeting error:', err));
+    }
     showToast('Vinculación con reunión actualizada', 'info');
   };
 
@@ -4747,31 +4916,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setContacts((prev) => [newContact, ...prev]);
     logAudit('Contactos', newContact.id, 'crear', `Nuevo contacto: ${newContact.name} ${newContact.lastName} (${newContact.institution})`);
     showToast(`Contacto "${newContact.name} ${newContact.lastName}" agregado exitosamente`, 'success');
+    if (isSupabaseConfigured()) {
+      upsertContactInSupabase(newContact).catch((err) => console.warn('Supabase sync contact error:', err));
+    }
     return newContact;
   };
 
   const updateContact = (id: string, updates: Partial<Contact>, silentToast: boolean = false) => {
-    setContacts((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c))
-    );
+    const existing = contacts.find((c) => c.id === id);
+    if (!existing) return;
+    const updatedContact: Contact = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+    setContacts((prev) => prev.map((c) => (c.id === id ? updatedContact : c)));
     logAudit('Contactos', id, 'editar', `Contacto ${id} actualizado`);
     if (!silentToast) {
       showToast('Contacto actualizado correctamente', 'success');
     }
+    if (isSupabaseConfigured()) {
+      upsertContactInSupabase(updatedContact).catch((err) => console.warn('Supabase update contact error:', err));
+    }
   };
 
   const toggleContactFrequent = (id: string) => {
-    setContacts((prev) =>
-      prev.map((c) => {
-        if (c.id === id) {
-          const nextVal = !c.isFrequent;
-          logAudit('Contactos', id, 'editar', `Contacto ${c.name} ${c.lastName} ${nextVal ? 'marcado como frecuente' : 'desmarcado de frecuentes'}`);
-          showToast(nextVal ? 'Marcado como frecuente ⭐' : 'Removido de frecuentes', 'info');
-          return { ...c, isFrequent: nextVal, updatedAt: new Date().toISOString() };
-        }
-        return c;
-      })
-    );
+    const existing = contacts.find((c) => c.id === id);
+    if (!existing) return;
+    const nextVal = !existing.isFrequent;
+    const updatedContact: Contact = { ...existing, isFrequent: nextVal, updatedAt: new Date().toISOString() };
+    setContacts((prev) => prev.map((c) => (c.id === id ? updatedContact : c)));
+    logAudit('Contactos', id, 'editar', `Contacto ${existing.name} ${existing.lastName} ${nextVal ? 'marcado como frecuente' : 'desmarcado de frecuentes'}`);
+    showToast(nextVal ? 'Marcado como frecuente ⭐' : 'Removido de frecuentes', 'info');
+    if (isSupabaseConfigured()) {
+      upsertContactInSupabase(updatedContact).catch((err) => console.warn('Supabase toggle contact error:', err));
+    }
   };
 
   const deleteContact = (id: string, hard: boolean = false) => {
@@ -4779,16 +4954,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setContacts((prev) => prev.filter((c) => c.id !== id));
       logAudit('Contactos', id, 'eliminar_logico', `Contacto ${id} eliminado permanentemente`);
       showToast('Contacto eliminado definitivamente', 'warning');
+      if (isSupabaseConfigured()) {
+        deleteContactFromSupabase(id).catch((err) => console.warn('Supabase hard delete contact error:', err));
+      }
     } else {
+      const existing = contacts.find((c) => c.id === id);
+      const updatedContact: Contact = existing
+        ? { ...existing, archived: true, deletedAt: new Date().toISOString(), deletedBy: currentUser.name }
+        : ({ id, archived: true, name: '', email: '', role: '', phone: '', programIds: [], isFrequent: false, isActive: false } as Contact);
+
       setContacts((prev) =>
-        prev.map((c) =>
-          c.id === id
-            ? { ...c, archived: true, deletedAt: new Date().toISOString(), deletedBy: currentUser.name }
-            : c
-        )
+        prev.map((c) => (c.id === id ? updatedContact : c))
       );
       logAudit('Contactos', id, 'eliminar_logico', `Contacto ${id} eliminado lógicamente (archivado)`);
       showToast('Contacto eliminado correctamente', 'warning');
+      if (isSupabaseConfigured()) {
+        deleteContactFromSupabase(id).catch((err) => console.warn('Supabase soft delete contact error:', err));
+      }
     }
   };
 
@@ -5000,6 +5182,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       upsertProgramInSupabase(newProg).catch((err) =>
         console.warn('Error syncing new program to Supabase:', err?.message)
       );
+      upsertFinancialPeriodInSupabase(initialFin).catch((err) =>
+        console.warn('Error syncing initial fin period to Supabase:', err?.message)
+      );
+      upsertBudgetComponentInSupabase(baseBudgetPersonal).catch((err) =>
+        console.warn('Error syncing budget personal component to Supabase:', err?.message)
+      );
+      upsertBudgetComponentInSupabase(baseBudgetBienes).catch((err) =>
+        console.warn('Error syncing budget bienes component to Supabase:', err?.message)
+      );
     }
 
     logAudit('Programa', newProg.id, 'crear', `Nuevo programa creado: ${newProg.name} (${newProg.code})`);
@@ -5009,6 +5200,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const deleteProgram = (id: string) => {
     setPrograms((prev) => prev.filter((p) => p.id !== id));
+    if (isSupabaseConfigured()) {
+      deleteProgramFromSupabase(id).catch((err) =>
+        console.warn('Error deleting program from Supabase:', err?.message)
+      );
+    }
     logAudit('Programa', id, 'eliminar_logico', `Programa ${id} eliminado`);
     showToast('Programa eliminado correctamente', 'warning');
   };

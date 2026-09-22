@@ -175,7 +175,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
         }
       }
 
-      updateCurrentUser({
+      const userRes = await updateCurrentUser({
         name: name.trim(),
         email: email.trim(),
         phonePrefix,
@@ -185,6 +185,12 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
         avatar: calculatedAvatar,
         photoUrl,
       });
+
+      if (!userRes.success && userRes.error) {
+        setErrorMessage(userRes.error);
+        setIsSaving(false);
+        return;
+      }
 
       setIsSaved(true);
       setSuccessMessage('¡Perfil y datos guardados exitosamente en la base de datos!');

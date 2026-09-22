@@ -33,7 +33,10 @@ CREATE TABLE IF NOT EXISTS public.users (
 -- Asegurar que las columnas nuevas existan si la tabla ya fue creada previamente
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'phone_prefix') THEN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'phone') THEN
+    ALTER TABLE public.users ADD COLUMN phone TEXT DEFAULT '1234567890';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'phone_prefix') THEN
     ALTER TABLE public.users ADD COLUMN phone_prefix TEXT DEFAULT 'CL +56';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'instagram') THEN
@@ -45,10 +48,26 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'budget_year') THEN
     ALTER TABLE public.users ADD COLUMN budget_year INTEGER DEFAULT 2026;
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'photo_url') THEN
+    ALTER TABLE public.users ADD COLUMN photo_url TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'avatar') THEN
+    ALTER TABLE public.users ADD COLUMN avatar TEXT;
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'updated_at') THEN
     ALTER TABLE public.users ADD COLUMN updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL;
   END IF;
 END $$;
+
+-- Actualizar filas existentes en public.users con valores por defecto si tienen campos nulos
+UPDATE public.users 
+SET 
+  phone = COALESCE(NULLIF(phone, ''), '1234567890'),
+  phone_prefix = COALESCE(NULLIF(phone_prefix, ''), 'CL +56'),
+  instagram = COALESCE(NULLIF(instagram, ''), 'tuusuario'),
+  country = COALESCE(NULLIF(country, ''), 'Chile'),
+  budget_year = COALESCE(budget_year, 2026)
+WHERE phone IS NULL OR phone_prefix IS NULL OR instagram IS NULL OR country IS NULL;
 
 -- 3. Tabla de Programas de Salud (public.health_programs)
 CREATE TABLE IF NOT EXISTS public.health_programs (
@@ -100,7 +119,7 @@ CREATE TABLE IF NOT EXISTS public.establishments (
 
 -- 5. Tabla de Tareas (public.tasks)
 CREATE TABLE IF NOT EXISTS public.tasks (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   program_id TEXT,
   title TEXT NOT NULL,
   description TEXT,
@@ -124,7 +143,7 @@ CREATE TABLE IF NOT EXISTS public.tasks (
 
 -- 6. Tabla de Compras y Adquisiciones (public.purchases)
 CREATE TABLE IF NOT EXISTS public.purchases (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   program_id TEXT,
   establishment_id TEXT,
   code TEXT,
@@ -145,7 +164,7 @@ CREATE TABLE IF NOT EXISTS public.purchases (
 
 -- 7. Tabla de Reuniones y Acuerdos (public.meetings)
 CREATE TABLE IF NOT EXISTS public.meetings (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   program_id TEXT,
   title TEXT NOT NULL,
   date DATE NOT NULL,
@@ -161,7 +180,7 @@ CREATE TABLE IF NOT EXISTS public.meetings (
 
 -- 8. Tabla de Indicadores y Metas (public.indicators)
 CREATE TABLE IF NOT EXISTS public.indicators (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   program_id TEXT,
   code TEXT,
   name TEXT NOT NULL,
@@ -181,7 +200,7 @@ CREATE TABLE IF NOT EXISTS public.indicators (
 
 -- 9. Tabla de Contactos y Directorio (public.contacts)
 CREATE TABLE IF NOT EXISTS public.contacts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   program_id TEXT,
   name TEXT NOT NULL,
   last_name TEXT,
@@ -195,7 +214,7 @@ CREATE TABLE IF NOT EXISTS public.contacts (
 
 -- 10. Tabla de Consultas Técnicas (public.questions)
 CREATE TABLE IF NOT EXISTS public.questions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   program_id TEXT,
   asked_by TEXT,
   category TEXT DEFAULT 'orientacion_tecnica',
@@ -213,7 +232,7 @@ CREATE TABLE IF NOT EXISTS public.questions (
 
 -- 11. Tabla de Alertas del Sistema (public.alerts)
 CREATE TABLE IF NOT EXISTS public.alerts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   program_id TEXT,
   type TEXT DEFAULT 'sistema',
   severity TEXT DEFAULT 'media',
@@ -221,6 +240,32 @@ CREATE TABLE IF NOT EXISTS public.alerts (
   message TEXT,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Migración segura: convertir columnas de id a tipo TEXT si fueron creadas previamente como UUID
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tasks' AND column_name = 'id' AND data_type = 'uuid') THEN
+    ALTER TABLE public.tasks ALTER COLUMN id TYPE TEXT USING id::text;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'purchases' AND column_name = 'id' AND data_type = 'uuid') THEN
+    ALTER TABLE public.purchases ALTER COLUMN id TYPE TEXT USING id::text;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'meetings' AND column_name = 'id' AND data_type = 'uuid') THEN
+    ALTER TABLE public.meetings ALTER COLUMN id TYPE TEXT USING id::text;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'indicators' AND column_name = 'id' AND data_type = 'uuid') THEN
+    ALTER TABLE public.indicators ALTER COLUMN id TYPE TEXT USING id::text;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'contacts' AND column_name = 'id' AND data_type = 'uuid') THEN
+    ALTER TABLE public.contacts ALTER COLUMN id TYPE TEXT USING id::text;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'questions' AND column_name = 'id' AND data_type = 'uuid') THEN
+    ALTER TABLE public.questions ALTER COLUMN id TYPE TEXT USING id::text;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'alerts' AND column_name = 'id' AND data_type = 'uuid') THEN
+    ALTER TABLE public.alerts ALTER COLUMN id TYPE TEXT USING id::text;
+  END IF;
+END $$;
 
 -- 12. Tabla de Períodos Financieros (public.financial_periods)
 CREATE TABLE IF NOT EXISTS public.financial_periods (

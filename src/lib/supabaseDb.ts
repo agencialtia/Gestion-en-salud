@@ -34,11 +34,15 @@ export function generateUUID(): string {
   });
 }
 
-export function ensureUUID(id?: string): string {
-  if (id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-    return id.toLowerCase();
+export function ensureValidId(id?: string): string {
+  if (id && String(id).trim().length > 0) {
+    return String(id).trim();
   }
   return generateUUID();
+}
+
+export function ensureUUID(id?: string): string {
+  return ensureValidId(id);
 }
 
 /* ==========================================================================
@@ -398,22 +402,58 @@ export function toDbUser(u: Partial<User> & { id: string; email?: string; name?:
     phone_prefix: u.phonePrefix || 'CL +56',
     instagram: u.instagram || null,
     country: u.country || 'Chile',
-    budget_year: u.budgetYear ? String(u.budgetYear) : '2026',
+    budget_year: Number(u.budgetYear) || 2026,
     updated_at: new Date().toISOString(),
   };
 }
 
-export async function upsertUserInSupabase(user: Partial<User> & { id: string; email?: string; name?: string }): Promise<void> {
-  if (!isSupabaseConfigured()) return;
+export async function upsertUserInSupabase(user: Partial<User> & { id?: string; email?: string; name?: string }): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured()) return { success: true };
   try {
-    const payload = toDbUser(user);
-    const { error } = await supabase
+    let authUid: string | undefined;
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      authUid = authData?.user?.id;
+    } catch {
+      // Sin sesión activa
+    }
+
+    const resolvedId = authUid || user.id || 'user_' + Date.now();
+    const payload = toDbUser({
+      ...user,
+      id: resolvedId,
+    });
+
+    let { error } = await supabase
       .from('users')
       .upsert(payload, { onConflict: 'id' });
-    if (error) {
-      console.warn('Advertencia al guardar usuario en tabla users de Supabase:', error.message);
-    } else {
-      console.log('Usuario guardado exitosamente en la tabla users:', user.email);
+
+    // Si onConflict id no actualizó porque la fila en la BD tenía otro ID o correo
+    if (user.email) {
+      const emailTrimmed = user.email.toLowerCase().trim();
+      const byEmail = await supabase
+        .from('users')
+        .update({
+          name: payload.name,
+          phone: payload.phone,
+          phone_prefix: payload.phone_prefix,
+          instagram: payload.instagram,
+          country: payload.country,
+          avatar: payload.avatar,
+          photo_url: payload.photo_url,
+          role: payload.role,
+          title: payload.title,
+          comuna: payload.comuna,
+          establishment: payload.establishment,
+          health_service: payload.health_service,
+          budget_year: payload.budget_year,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('email', emailTrimmed);
+      
+      if (!byEmail.error) {
+        error = null;
+      }
     }
 
     // Sincronizar también la metadata del usuario en Supabase Auth
@@ -431,13 +471,23 @@ export async function upsertUserInSupabase(user: Partial<User> & { id: string; e
           health_service: payload.health_service,
           instagram: payload.instagram,
           country: payload.country,
+          budget_year: payload.budget_year,
         },
       });
     } catch {
-      // Si no hay sesión activa o es un usuario externo, ignorar de forma segura
+      // Ignorar si no hay sesión activa
     }
+
+    if (error) {
+      console.warn('Advertencia al guardar usuario en Supabase:', error.message);
+      return { success: false, error: error.message };
+    }
+
+    console.log('Usuario guardado exitosamente en Supabase (users & auth):', payload.email || payload.name);
+    return { success: true };
   } catch (err: any) {
-    console.warn('upsertUserInSupabase error:', err?.message);
+    console.warn('upsertUserInSupabase exception:', err?.message);
+    return { success: false, error: err?.message };
   }
 }
 
@@ -781,11 +831,7 @@ export async function upsertTaskInSupabase(task: Task): Promise<Task> {
 }
 
 export async function deleteTaskFromSupabase(id: string): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  // If id is not uuid, don't execute query to avoid 22P02 Postgres error
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-    return;
-  }
+  if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('tasks').delete().eq('id', id);
     if (error) {
@@ -818,10 +864,7 @@ export async function upsertPurchaseInSupabase(purchase: Purchase): Promise<Purc
 }
 
 export async function deletePurchaseFromSupabase(id: string): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-    return;
-  }
+  if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('purchases').delete().eq('id', id);
     if (error) {
@@ -854,10 +897,7 @@ export async function upsertMeetingInSupabase(meeting: Meeting): Promise<Meeting
 }
 
 export async function deleteMeetingFromSupabase(id: string): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-    return;
-  }
+  if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('meetings').delete().eq('id', id);
     if (error) {
@@ -890,10 +930,7 @@ export async function upsertIndicatorInSupabase(indicator: Indicator): Promise<I
 }
 
 export async function deleteIndicatorFromSupabase(id: string): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-    return;
-  }
+  if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('indicators').delete().eq('id', id);
     if (error) {
@@ -926,10 +963,7 @@ export async function upsertContactInSupabase(contact: Contact): Promise<Contact
 }
 
 export async function deleteContactFromSupabase(id: string): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-    return;
-  }
+  if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('contacts').delete().eq('id', id);
     if (error) {
@@ -962,10 +996,7 @@ export async function upsertQuestionInSupabase(question: Question): Promise<Ques
 }
 
 export async function deleteQuestionFromSupabase(id: string): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-    return;
-  }
+  if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('questions').delete().eq('id', id);
     if (error) {
@@ -998,10 +1029,7 @@ export async function upsertAlertInSupabase(alert: Alert): Promise<Alert> {
 }
 
 export async function deleteAlertFromSupabase(id: string): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-    return;
-  }
+  if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('alerts').delete().eq('id', id);
     if (error) {
@@ -1030,6 +1058,18 @@ export async function upsertProgramInSupabase(program: HealthProgram): Promise<H
   } catch (err: any) {
     console.warn('Program upsert skipped safely:', err?.message);
     return program;
+  }
+}
+
+export async function deleteProgramFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured() || !id) return;
+  try {
+    const { error } = await supabase.from('health_programs').delete().eq('id', id);
+    if (error) {
+      console.warn('Error deleting program from Supabase:', error.message);
+    }
+  } catch (err: any) {
+    console.warn('Program delete skipped safely:', err?.message);
   }
 }
 
