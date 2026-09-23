@@ -373,24 +373,20 @@ BEGIN
   END LOOP;
 
   -- Columnas de perfiles de usuario
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'phone') THEN
-    ALTER TABLE public.users ADD COLUMN phone TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'phone_prefix') THEN
-    ALTER TABLE public.users ADD COLUMN phone_prefix TEXT DEFAULT 'CL +56';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'instagram') THEN
-    ALTER TABLE public.users ADD COLUMN instagram TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'country') THEN
-    ALTER TABLE public.users ADD COLUMN country TEXT DEFAULT 'Chile';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'budget_year') THEN
-    ALTER TABLE public.users ADD COLUMN budget_year INTEGER DEFAULT 2026;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'health_service') THEN
-    ALTER TABLE public.users ADD COLUMN health_service TEXT DEFAULT 'Servicio de Salud Metropolitano Norte';
-  END IF;
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone_prefix TEXT DEFAULT 'CL +56';
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS instagram TEXT;
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Chile';
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS budget_year INTEGER DEFAULT 2026;
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS health_service TEXT DEFAULT 'Servicio de Salud Metropolitano Norte';
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS photo_url TEXT;
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS avatar TEXT;
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS comuna TEXT DEFAULT 'Quilicura (DISAM)';
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS establishment TEXT DEFAULT 'Dirección de Salud / Comunal';
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS title TEXT DEFAULT 'Referente de Programas de Salud';
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'referente';
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now());
 END $$;
 
 -- ==============================================================================
@@ -543,3 +539,36 @@ VALUES
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   short_name = EXCLUDED.short_name;
+
+-- Perfil de Referente Comunal (Klaus Bauer)
+INSERT INTO public.users (
+  id, name, email, role, title, comuna, establishment, health_service, 
+  avatar, photo_url, phone, phone_prefix, instagram, country, budget_year, data
+)
+VALUES (
+  'usr_klaus_bauer',
+  'Klaus Bauer',
+  'kbauergrandon@gmail.com',
+  'referente',
+  'Referente de Programas de Salud',
+  'Quilicura (DISAM)',
+  'Dirección de Salud / Comunal',
+  'Servicio de Salud Metropolitano Norte',
+  'KB',
+  NULL,
+  '1234567890',
+  'CL +56',
+  'tuusuario',
+  'Chile',
+  2026,
+  '{"name": "Klaus Bauer", "email": "kbauergrandon@gmail.com", "phone": "1234567890", "phonePrefix": "CL +56", "instagram": "tuusuario", "country": "Chile"}'::jsonb
+)
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  email = EXCLUDED.email,
+  phone = COALESCE(EXCLUDED.phone, public.users.phone),
+  phone_prefix = COALESCE(EXCLUDED.phone_prefix, public.users.phone_prefix),
+  instagram = COALESCE(EXCLUDED.instagram, public.users.instagram),
+  country = COALESCE(EXCLUDED.country, public.users.country),
+  data = COALESCE(public.users.data, '{}'::jsonb) || EXCLUDED.data;
+

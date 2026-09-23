@@ -2639,6 +2639,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               ...data.budget2025Notes,
             }));
           }
+          if (data.users && data.users.length > 0) {
+            setCurrentUser((prev) => {
+              const prevEmail = (prev.email || '').toLowerCase().trim();
+              const matched = data.users.find((u) => 
+                (prev.id && u.id === prev.id) ||
+                (prevEmail && u.email && u.email.toLowerCase().trim() === prevEmail)
+              ) || (data.users.length === 1 ? data.users[0] : undefined);
+
+              if (matched) {
+                const merged: User = {
+                  ...prev,
+                  ...matched,
+                  name: matched.name || prev.name,
+                  email: matched.email || prev.email,
+                  phone: matched.phone !== undefined ? matched.phone : prev.phone,
+                  phonePrefix: matched.phonePrefix || prev.phonePrefix,
+                  instagram: matched.instagram !== undefined ? matched.instagram : prev.instagram,
+                  country: matched.country || prev.country,
+                  photoUrl: matched.photoUrl || prev.photoUrl,
+                  avatar: matched.avatar || prev.avatar,
+                  role: matched.role || prev.role,
+                  title: matched.title || prev.title,
+                  comuna: matched.comuna || prev.comuna,
+                  establishment: matched.establishment || prev.establishment,
+                  healthService: matched.healthService || prev.healthService,
+                  budgetYear: matched.budgetYear || prev.budgetYear,
+                };
+                try {
+                  localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(merged));
+                } catch (e) {}
+                return merged;
+              }
+              return prev;
+            });
+          }
 
           setSupabaseLastSyncTime(new Date().toISOString());
           setSupabaseSyncState('synced');
@@ -2807,22 +2842,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         }).catch(() => {});
       } else if (event.table === 'users' && event.newRecord) {
-        if (event.newRecord.email && currentUser.email && event.newRecord.email.toLowerCase() === currentUser.email.toLowerCase()) {
-          setCurrentUser((prev) => ({
-            ...prev,
-            name: event.newRecord.name || prev.name,
-            phone: event.newRecord.phone !== undefined ? event.newRecord.phone : prev.phone,
-            phonePrefix: event.newRecord.phone_prefix !== undefined ? event.newRecord.phone_prefix : prev.phonePrefix,
-            instagram: event.newRecord.instagram !== undefined ? event.newRecord.instagram : prev.instagram,
-            country: event.newRecord.country || prev.country,
-            role: event.newRecord.role || prev.role,
-            title: event.newRecord.title || prev.title,
-            comuna: event.newRecord.comuna || prev.comuna,
-            establishment: event.newRecord.establishment || prev.establishment,
-            healthService: event.newRecord.health_service || prev.healthService,
-            budgetYear: event.newRecord.budget_year || prev.budgetYear,
-          }));
-        }
+        const nr = event.newRecord;
+        setCurrentUser((prev) => {
+          const matches = 
+            (nr.id && prev.id && nr.id === prev.id) ||
+            (nr.email && prev.email && nr.email.toLowerCase().trim() === prev.email.toLowerCase().trim());
+          if (matches) {
+            const updated = {
+              ...prev,
+              name: nr.name || prev.name,
+              email: nr.email || prev.email,
+              phone: nr.phone !== undefined ? nr.phone : prev.phone,
+              phonePrefix: nr.phone_prefix !== undefined ? nr.phone_prefix : prev.phonePrefix,
+              instagram: nr.instagram !== undefined ? nr.instagram : prev.instagram,
+              country: nr.country || prev.country,
+              photoUrl: nr.photo_url !== undefined ? nr.photo_url : prev.photoUrl,
+              avatar: nr.avatar || prev.avatar,
+              role: nr.role || prev.role,
+              title: nr.title || prev.title,
+              comuna: nr.comuna || prev.comuna,
+              establishment: nr.establishment || prev.establishment,
+              healthService: nr.health_service || prev.healthService,
+              budgetYear: nr.budget_year || prev.budgetYear,
+            };
+            try {
+              localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(updated));
+            } catch (e) {}
+            return updated;
+          }
+          return prev;
+        });
       }
     });
 

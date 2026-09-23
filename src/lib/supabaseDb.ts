@@ -911,12 +911,28 @@ export async function upsertUserInSupabase(user: Partial<User> & { id?: string; 
       // Sin sesión activa
     }
 
-    const resolvedId = authUid || user.id || 'user_' + Date.now();
     const resolvedEmail = (user.email || authEmail || '').toLowerCase().trim();
+
+    // 1. Resolve existing record ID from Supabase public.users if available
+    let existingId: string | undefined;
+    if (authUid) {
+      existingId = authUid;
+    } else {
+      if (user.id) {
+        const { data: byId } = await supabase.from('users').select('id').eq('id', user.id).maybeSingle();
+        if (byId?.id) existingId = byId.id;
+      }
+      if (!existingId && resolvedEmail) {
+        const { data: byEmail } = await supabase.from('users').select('id').eq('email', resolvedEmail).maybeSingle();
+        if (byEmail?.id) existingId = byEmail.id;
+      }
+    }
+
+    const finalId = existingId || authUid || user.id || 'usr_' + Date.now();
 
     const payload = toDbUser({
       ...user,
-      id: resolvedId,
+      id: finalId,
       email: resolvedEmail,
     });
 
@@ -924,7 +940,39 @@ export async function upsertUserInSupabase(user: Partial<User> & { id?: string; 
       .from('users')
       .upsert(payload, { onConflict: 'id' });
 
-    if (resolvedEmail) {
+    // Fallback resilient saving if Supabase table lacks newly added columns (phone, instagram, photo_url, etc.)
+    if (error && (error.message.includes('column') || error.message.includes('schema cache'))) {
+      console.warn('Alerta de esquema en users table, aplicando guardado de respaldo resiliente con data JSONB...', error.message);
+      const fallbackPayload: any = {
+        id: finalId,
+        name: payload.name || 'Usuario',
+        email: resolvedEmail,
+        role: payload.role || 'referente',
+        title: payload.title || 'Referente de Programas de Salud',
+        data: {
+          ...payload.data,
+          phone: payload.phone,
+          phonePrefix: payload.phone_prefix,
+          instagram: payload.instagram,
+          country: payload.country,
+          photoUrl: payload.photo_url,
+          avatar: payload.avatar,
+          budgetYear: payload.budget_year,
+          title: payload.title,
+          role: payload.role,
+          healthService: payload.health_service,
+          comuna: payload.comuna,
+          establishment: payload.establishment,
+        },
+        updated_at: new Date().toISOString(),
+      };
+      const fallbackRes = await supabase.from('users').upsert(fallbackPayload, { onConflict: 'id' });
+      if (!fallbackRes.error) {
+        error = null;
+      }
+    }
+
+    if (resolvedEmail && !error) {
       const byEmail = await supabase
         .from('users')
         .update(payload)
