@@ -1,24 +1,45 @@
 -- ==============================================================================
--- QUILICURA SALUD - ESQUEMA INTEGRAL SUPABASE CON TODAS LAS TABLAS Y CAMPOS
--- 100% Compatible, Idempotente (se puede ejecutar múltiples veces sin error)
--- Incluye: usuarios, programas, tareas, compras, reuniones, indicadores,
--- contactos, preguntas, alertas, establecimientos, finanzas y presupuestos.
+-- SISTEMA DE GESTIÓN QUILICURA SALUD (DISAM)
+-- ESQUEMA COMPLETO Y ACTUALIZADO PARA SUPABASE (POSTGRESQL)
+-- 
+-- Compatible con:
+-- 1. Resumen y Programas de Salud (health_programs)
+-- 2. Tareas y Planificación (tasks)
+-- 3. Compras y Adquisiciones (purchases)
+-- 4. Reuniones, Acuerdos y Compromisos (meetings)
+-- 5. Indicadores y Evaluaciones Sanitarias (indicators)
+-- 6. Directorio de Contactos (contacts)
+-- 7. Preguntas y Dudas Técnicas (questions)
+-- 8. Alertas y Notificaciones (alerts)
+-- 9. Establecimientos de la Red APS (establishments)
+-- 10. Períodos Financieros y Presupuestos (financial_periods)
+-- 11. Componentes Presupuestarios Subtítulo 21, 22, 29 (budget_components)
+-- 12. Presupuestos Referenciales y Notas Históricas (budget_2025_notes)
+-- 13. Correos y Requerimientos de Salud (emails)
+-- 14. Biblioteca de Documentos y Convenios (documents)
+-- 15. Recursos Humanos y Contrataciones (hr_records)
+-- 16. Base de Conocimiento Institucional (knowledge)
+-- 17. Usuarios y Perfiles (users)
 -- ==============================================================================
 
--- 1. Extensiones necesarias
+-- 1. Extensiones
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- 2. Tabla de Usuarios y Perfiles (public.users)
+-- ==============================================================================
+-- 2. TABLAS PRINCIPALES (TODAS CON COLUMNA data JSONB PARA MÁXIMA FLEXIBILIDAD)
+-- ==============================================================================
+
+-- Tabla: users (Perfiles de usuario)
 CREATE TABLE IF NOT EXISTS public.users (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   email TEXT,
   role TEXT DEFAULT 'referente',
-  title TEXT,
+  title TEXT DEFAULT 'Referente de Programas de Salud',
   comuna TEXT DEFAULT 'Quilicura (DISAM)',
   establishment TEXT DEFAULT 'Dirección de Salud / Comunal',
-  health_service TEXT DEFAULT 'SSMN (Metropolitano Norte)',
+  health_service TEXT DEFAULT 'Servicio de Salud Metropolitano Norte',
   avatar TEXT,
   photo_url TEXT,
   phone TEXT,
@@ -26,40 +47,12 @@ CREATE TABLE IF NOT EXISTS public.users (
   instagram TEXT,
   country TEXT DEFAULT 'Chile',
   budget_year INTEGER DEFAULT 2026,
+  data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Asegurar que las columnas nuevas existan si la tabla ya fue creada previamente
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'phone') THEN
-    ALTER TABLE public.users ADD COLUMN phone TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'phone_prefix') THEN
-    ALTER TABLE public.users ADD COLUMN phone_prefix TEXT DEFAULT 'CL +56';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'instagram') THEN
-    ALTER TABLE public.users ADD COLUMN instagram TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'country') THEN
-    ALTER TABLE public.users ADD COLUMN country TEXT DEFAULT 'Chile';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'budget_year') THEN
-    ALTER TABLE public.users ADD COLUMN budget_year INTEGER DEFAULT 2026;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'photo_url') THEN
-    ALTER TABLE public.users ADD COLUMN photo_url TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'avatar') THEN
-    ALTER TABLE public.users ADD COLUMN avatar TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'updated_at') THEN
-    ALTER TABLE public.users ADD COLUMN updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL;
-  END IF;
-END $$;
-
--- 3. Tabla de Programas de Salud (public.health_programs)
+-- Tabla: health_programs (Programas de salud comunal)
 CREATE TABLE IF NOT EXISTS public.health_programs (
   id TEXT PRIMARY KEY,
   code TEXT,
@@ -78,21 +71,11 @@ CREATE TABLE IF NOT EXISTS public.health_programs (
   coverage NUMERIC DEFAULT 0,
   status TEXT DEFAULT 'activo',
   year INTEGER DEFAULT 2026,
+  data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Asegurar tipo TEXT para target_population
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_name = 'health_programs' AND column_name = 'target_population' AND data_type != 'text'
-  ) THEN
-    ALTER TABLE public.health_programs ALTER COLUMN target_population TYPE TEXT USING target_population::TEXT;
-  END IF;
-END $$;
-
--- 4. Tabla de Establecimientos de Salud (public.establishments)
+-- Tabla: establishments (Centros de salud, CESFAM, CECOSF, SAR, DISAM)
 CREATE TABLE IF NOT EXISTS public.establishments (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -104,10 +87,11 @@ CREATE TABLE IF NOT EXISTS public.establishments (
   phone TEXT,
   director TEXT,
   active BOOLEAN DEFAULT true,
+  data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 5. Tabla de Tareas (public.tasks)
+-- Tabla: tasks (Planificación operativa y tareas)
 CREATE TABLE IF NOT EXISTS public.tasks (
   id TEXT PRIMARY KEY,
   program_id TEXT,
@@ -127,154 +111,139 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   budget_assigned NUMERIC DEFAULT 0,
   milestone BOOLEAN DEFAULT false,
   notes TEXT,
+  data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 6. Tabla de Compras y Adquisiciones (public.purchases)
+-- Tabla: purchases (Licitaciones, compras y adquisiciones)
 CREATE TABLE IF NOT EXISTS public.purchases (
   id TEXT PRIMARY KEY,
   program_id TEXT,
-  establishment_id TEXT,
-  code TEXT,
-  description TEXT NOT NULL,
-  justification TEXT,
-  estimated_amount NUMERIC DEFAULT 0,
-  actual_amount NUMERIC,
+  title TEXT NOT NULL,
   supplier TEXT,
-  status TEXT DEFAULT 'solicitado',
-  priority TEXT DEFAULT 'media',
-  category TEXT DEFAULT 'general',
-  request_date DATE,
-  orden_compra TEXT,
-  folio_mercado_publico TEXT,
-  responsible_user TEXT,
-  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+  amount NUMERIC DEFAULT 0,
+  stage TEXT DEFAULT 'solicitud',
+  status TEXT DEFAULT 'en_proceso',
+  oc_number TEXT,
+  reception_status TEXT DEFAULT 'pendiente',
+  invoice_status TEXT DEFAULT 'sin_factura',
+  establishment_id TEXT,
+  date DATE,
+  notes TEXT,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 7. Tabla de Reuniones y Acuerdos (public.meetings)
+-- Tabla: meetings (Reuniones, acuerdos y compromisos)
 CREATE TABLE IF NOT EXISTS public.meetings (
   id TEXT PRIMARY KEY,
   program_id TEXT,
   title TEXT NOT NULL,
-  date DATE NOT NULL,
-  time TEXT DEFAULT '10:00',
+  date DATE,
+  start_time TEXT,
+  end_time TEXT,
   location TEXT,
+  type TEXT DEFAULT 'ordinaria',
   status TEXT DEFAULT 'programada',
-  summary TEXT,
-  participants JSONB DEFAULT '[]'::jsonb,
+  attendees JSONB DEFAULT '[]'::jsonb,
   agreements JSONB DEFAULT '[]'::jsonb,
   commitments JSONB DEFAULT '[]'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 8. Tabla de Indicadores y Metas (public.indicators)
-CREATE TABLE IF NOT EXISTS public.indicators (
-  id TEXT PRIMARY KEY,
-  program_id TEXT,
-  code TEXT,
-  name TEXT NOT NULL,
-  description TEXT,
-  target_value NUMERIC DEFAULT 100,
-  current_value NUMERIC DEFAULT 0,
-  unit TEXT DEFAULT '%',
-  periodicity TEXT DEFAULT 'mensual',
-  weight NUMERIC DEFAULT 1,
-  good_threshold NUMERIC DEFAULT 85,
-  warning_threshold NUMERIC DEFAULT 70,
-  measurements JSONB DEFAULT '[]'::jsonb,
-  cuts JSONB DEFAULT '[]'::jsonb,
-  last_updated TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
-  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 9. Tabla de Contactos y Directorio (public.contacts)
-CREATE TABLE IF NOT EXISTS public.contacts (
-  id TEXT PRIMARY KEY,
-  program_id TEXT,
-  name TEXT NOT NULL,
-  last_name TEXT,
-  role TEXT,
-  institution TEXT,
-  email TEXT,
-  phone TEXT,
-  contact_type TEXT DEFAULT 'referente_comunal',
-  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 10. Tabla de Consultas Técnicas (public.questions)
-CREATE TABLE IF NOT EXISTS public.questions (
-  id TEXT PRIMARY KEY,
-  program_id TEXT,
-  asked_by TEXT,
-  category TEXT DEFAULT 'orientacion_tecnica',
-  question TEXT NOT NULL,
-  answer TEXT,
-  status TEXT DEFAULT 'pendiente',
-  priority TEXT DEFAULT 'media',
-  date DATE DEFAULT CURRENT_DATE,
-  due_date DATE,
-  answered_by TEXT,
-  answered_date DATE,
-  follow_ups JSONB DEFAULT '[]'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 11. Tabla de Alertas del Sistema (public.alerts)
-CREATE TABLE IF NOT EXISTS public.alerts (
-  id TEXT PRIMARY KEY,
-  program_id TEXT,
-  type TEXT DEFAULT 'sistema',
-  severity TEXT DEFAULT 'media',
-  title TEXT NOT NULL,
-  message TEXT,
-  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- Migración segura: convertir columnas de id a tipo TEXT si fueron creadas previamente como UUID
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'tasks' AND column_name = 'id' AND data_type = 'uuid') THEN
-    ALTER TABLE public.tasks ALTER COLUMN id TYPE TEXT USING id::text;
-  END IF;
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'purchases' AND column_name = 'id' AND data_type = 'uuid') THEN
-    ALTER TABLE public.purchases ALTER COLUMN id TYPE TEXT USING id::text;
-  END IF;
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'meetings' AND column_name = 'id' AND data_type = 'uuid') THEN
-    ALTER TABLE public.meetings ALTER COLUMN id TYPE TEXT USING id::text;
-  END IF;
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'indicators' AND column_name = 'id' AND data_type = 'uuid') THEN
-    ALTER TABLE public.indicators ALTER COLUMN id TYPE TEXT USING id::text;
-  END IF;
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'contacts' AND column_name = 'id' AND data_type = 'uuid') THEN
-    ALTER TABLE public.contacts ALTER COLUMN id TYPE TEXT USING id::text;
-  END IF;
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'questions' AND column_name = 'id' AND data_type = 'uuid') THEN
-    ALTER TABLE public.questions ALTER COLUMN id TYPE TEXT USING id::text;
-  END IF;
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'alerts' AND column_name = 'id' AND data_type = 'uuid') THEN
-    ALTER TABLE public.alerts ALTER COLUMN id TYPE TEXT USING id::text;
-  END IF;
-END $$;
-
--- 12. Tabla de Períodos Financieros (public.financial_periods)
-CREATE TABLE IF NOT EXISTS public.financial_periods (
-  id TEXT PRIMARY KEY,
-  program_id TEXT NOT NULL,
-  year INTEGER DEFAULT 2026,
-  period_name TEXT,
-  allocated_budget NUMERIC DEFAULT 0,
-  executed_budget NUMERIC DEFAULT 0,
-  committed_budget NUMERIC DEFAULT 0,
-  available_budget NUMERIC DEFAULT 0,
-  execution_percentage NUMERIC DEFAULT 0,
-  status TEXT DEFAULT 'en_ejecucion',
   notes TEXT,
+  data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 13. Tabla de Componentes Presupuestarios (public.budget_components)
+-- Tabla: indicators (Metas sanitarias, cortes trimestrales e indicadores)
+CREATE TABLE IF NOT EXISTS public.indicators (
+  id TEXT PRIMARY KEY,
+  program_id TEXT,
+  name TEXT NOT NULL,
+  code TEXT,
+  description TEXT,
+  baseline NUMERIC DEFAULT 0,
+  target NUMERIC DEFAULT 0,
+  current_value NUMERIC DEFAULT 0,
+  unit TEXT DEFAULT '%',
+  frequency TEXT DEFAULT 'trimestral',
+  source TEXT,
+  status TEXT DEFAULT 'en_curso',
+  measurements JSONB DEFAULT '[]'::jsonb,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Tabla: contacts (Directorio institucional y referentes)
+CREATE TABLE IF NOT EXISTS public.contacts (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  last_name TEXT DEFAULT '',
+  role TEXT,
+  institution TEXT,
+  department TEXT,
+  email TEXT,
+  phone TEXT,
+  mobile TEXT,
+  is_frequent BOOLEAN DEFAULT false,
+  is_active BOOLEAN DEFAULT true,
+  program_ids JSONB DEFAULT '[]'::jsonb,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Tabla: questions (Consultas, dudas técnicas y resoluciones)
+CREATE TABLE IF NOT EXISTS public.questions (
+  id TEXT PRIMARY KEY,
+  program_id TEXT,
+  question TEXT NOT NULL,
+  answer TEXT,
+  status TEXT DEFAULT 'pendiente',
+  priority TEXT DEFAULT 'media',
+  author TEXT,
+  assigned_to TEXT,
+  follow_ups JSONB DEFAULT '[]'::jsonb,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Tabla: alerts (Alertas y notificaciones)
+CREATE TABLE IF NOT EXISTS public.alerts (
+  id TEXT PRIMARY KEY,
+  program_id TEXT,
+  type TEXT DEFAULT 'presupuesto',
+  title TEXT NOT NULL,
+  message TEXT,
+  severity TEXT DEFAULT 'media',
+  dismissed BOOLEAN DEFAULT false,
+  resolved BOOLEAN DEFAULT false,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Tabla: financial_periods (Partidas presupuestarias anuales)
+CREATE TABLE IF NOT EXISTS public.financial_periods (
+  id TEXT PRIMARY KEY,
+  program_id TEXT NOT NULL,
+  year INTEGER DEFAULT 2026,
+  period_name TEXT DEFAULT 'Presupuesto Inicial',
+  assigned_budget NUMERIC DEFAULT 0,
+  modifications NUMERIC DEFAULT 0,
+  executed_amount NUMERIC DEFAULT 0,
+  committed_amount NUMERIC DEFAULT 0,
+  projected_amount NUMERIC DEFAULT 0,
+  cutoff_date DATE,
+  notes TEXT,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Tabla: budget_components (Subtítulos 21 - Personal, 22 - Bienes y Servicios, 29 - Capital)
 CREATE TABLE IF NOT EXISTS public.budget_components (
   id TEXT PRIMARY KEY,
   program_id TEXT NOT NULL,
@@ -282,42 +251,171 @@ CREATE TABLE IF NOT EXISTS public.budget_components (
   budget_to_spend NUMERIC DEFAULT 0,
   spent_amount NUMERIC DEFAULT 0,
   category TEXT DEFAULT 'Personal',
-  description TEXT,
+  data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 14. Habilitar RLS en todas las tablas
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.health_programs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.establishments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.purchases ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.meetings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.indicators ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.contacts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.questions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.alerts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.financial_periods ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.budget_components ENABLE ROW LEVEL SECURITY;
+-- Tabla: budget_2025_notes (Notas referenciales y ejecución presupuestaria de años anteriores)
+CREATE TABLE IF NOT EXISTS public.budget_2025_notes (
+  id TEXT PRIMARY KEY,
+  program_id TEXT NOT NULL,
+  year INTEGER DEFAULT 2025,
+  note TEXT,
+  author TEXT,
+  date DATE,
+  budget_amount NUMERIC DEFAULT 0,
+  executed_amount NUMERIC DEFAULT 0,
+  fulfillment_rate NUMERIC DEFAULT 0,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
 
--- 15. Crear políticas de acceso completo para anon y authenticated
+-- Tabla: emails (Requerimientos, correos y oficios de salud)
+CREATE TABLE IF NOT EXISTS public.emails (
+  id TEXT PRIMARY KEY,
+  program_id TEXT,
+  subject TEXT NOT NULL,
+  sender TEXT,
+  recipient TEXT,
+  date DATE,
+  status TEXT DEFAULT 'pendiente',
+  priority TEXT DEFAULT 'media',
+  type TEXT DEFAULT 'recibido',
+  notes TEXT,
+  archived BOOLEAN DEFAULT false,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Tabla: documents (Repositorio de convenios, resoluciones y documentos institucionales)
+CREATE TABLE IF NOT EXISTS public.documents (
+  id TEXT PRIMARY KEY,
+  program_id TEXT,
+  program_ids JSONB DEFAULT '[]'::jsonb,
+  title TEXT NOT NULL,
+  description TEXT,
+  category TEXT DEFAULT 'convenio',
+  document_type TEXT DEFAULT 'convenio',
+  document_number TEXT,
+  status TEXT DEFAULT 'vigente',
+  file_name TEXT,
+  file_size TEXT,
+  upload_date TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
+  uploaded_by TEXT,
+  archived BOOLEAN DEFAULT false,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Tabla: hr_records (Recursos humanos, dotación y contratas)
+CREATE TABLE IF NOT EXISTS public.hr_records (
+  id TEXT PRIMARY KEY,
+  program_id TEXT,
+  establishment_id TEXT,
+  name TEXT NOT NULL,
+  rut TEXT,
+  role TEXT,
+  hours NUMERIC DEFAULT 44,
+  contract_type TEXT DEFAULT 'Contrata',
+  monthly_cost NUMERIC DEFAULT 0,
+  start_date DATE,
+  end_date DATE,
+  status TEXT DEFAULT 'activo',
+  archived BOOLEAN DEFAULT false,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Tabla: knowledge (Base de conocimiento y criterios técnicos)
+CREATE TABLE IF NOT EXISTS public.knowledge (
+  id TEXT PRIMARY KEY,
+  program_id TEXT,
+  program_ids JSONB DEFAULT '[]'::jsonb,
+  title TEXT NOT NULL,
+  category TEXT DEFAULT 'General',
+  content TEXT,
+  tags JSONB DEFAULT '[]'::jsonb,
+  author TEXT,
+  date TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
+  archived BOOLEAN DEFAULT false,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- ==============================================================================
+-- 3. MIGRACIÓN PREVENTIVA DE COLUMNAS (Para tablas que hayan existido previamente)
+-- ==============================================================================
 DO $$
 DECLARE
   t TEXT;
   tbls TEXT[] := ARRAY[
     'users', 'health_programs', 'establishments', 'tasks', 
     'purchases', 'meetings', 'indicators', 'contacts', 
-    'questions', 'alerts', 'financial_periods', 'budget_components'
+    'questions', 'alerts', 'financial_periods', 'budget_components',
+    'budget_2025_notes', 'emails', 'documents', 'hr_records', 'knowledge'
+  ];
+BEGIN
+  -- Asegurar columna data JSONB en todas las tablas
+  FOREACH t IN ARRAY tbls LOOP
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'data') THEN
+      EXECUTE format('ALTER TABLE public.%I ADD COLUMN data JSONB DEFAULT ''{}''::jsonb', t);
+    END IF;
+  END LOOP;
+
+  -- Asegurar tipo TEXT en IDs si previamente se habían definido como UUID
+  FOREACH t IN ARRAY tbls LOOP
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'id' AND data_type = 'uuid') THEN
+      EXECUTE format('ALTER TABLE public.%I ALTER COLUMN id TYPE TEXT USING id::text', t);
+    END IF;
+  END LOOP;
+
+  -- Columnas de perfiles de usuario
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'phone') THEN
+    ALTER TABLE public.users ADD COLUMN phone TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'phone_prefix') THEN
+    ALTER TABLE public.users ADD COLUMN phone_prefix TEXT DEFAULT 'CL +56';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'instagram') THEN
+    ALTER TABLE public.users ADD COLUMN instagram TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'country') THEN
+    ALTER TABLE public.users ADD COLUMN country TEXT DEFAULT 'Chile';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'budget_year') THEN
+    ALTER TABLE public.users ADD COLUMN budget_year INTEGER DEFAULT 2026;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'health_service') THEN
+    ALTER TABLE public.users ADD COLUMN health_service TEXT DEFAULT 'Servicio de Salud Metropolitano Norte';
+  END IF;
+END $$;
+
+-- ==============================================================================
+-- 4. SEGURIDAD Y PERMISOS ROW LEVEL SECURITY (RLS)
+-- ==============================================================================
+DO $$
+DECLARE
+  t TEXT;
+  tbls TEXT[] := ARRAY[
+    'users', 'health_programs', 'establishments', 'tasks', 
+    'purchases', 'meetings', 'indicators', 'contacts', 
+    'questions', 'alerts', 'financial_periods', 'budget_components',
+    'budget_2025_notes', 'emails', 'documents', 'hr_records', 'knowledge'
   ];
 BEGIN
   FOREACH t IN ARRAY tbls LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('DROP POLICY IF EXISTS "Acceso total a %I" ON public.%I', t, t);
     EXECUTE format('CREATE POLICY "Acceso total a %I" ON public.%I FOR ALL TO anon, authenticated USING (true) WITH CHECK (true)', t, t);
   END LOOP;
 END $$;
 
--- 16. Habilitar publicación en tiempo real (Realtime)
+-- ==============================================================================
+-- 5. SUSCRIPCIÓN EN TIEMPO REAL (SUPABASE REALTIME)
+-- ==============================================================================
 DO $$
 BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE 
@@ -332,12 +430,19 @@ BEGIN
     public.questions, 
     public.alerts, 
     public.financial_periods, 
-    public.budget_components;
+    public.budget_components,
+    public.budget_2025_notes,
+    public.emails,
+    public.documents,
+    public.hr_records,
+    public.knowledge;
 EXCEPTION
   WHEN others THEN NULL;
 END $$;
 
--- 17. Trigger automático para sincronizar auth.users -> public.users al registrarse
+-- ==============================================================================
+-- 6. SINCRONIZACIÓN AUTOMÁTICA AUTH -> PUBLIC.USERS
+-- ==============================================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -365,7 +470,7 @@ BEGIN
     COALESCE(NEW.raw_user_meta_data->>'title', 'Referente de Programas de Salud'),
     COALESCE(NEW.raw_user_meta_data->>'comuna', 'Quilicura (DISAM)'),
     COALESCE(NEW.raw_user_meta_data->>'establishment', 'Dirección de Salud / Comunal'),
-    COALESCE(NEW.raw_user_meta_data->>'healthService', 'SSMN (Metropolitano Norte)'),
+    COALESCE(NEW.raw_user_meta_data->>'healthService', 'Servicio de Salud Metropolitano Norte'),
     UPPER(SUBSTRING(COALESCE(NEW.raw_user_meta_data->>'name', NEW.email) FROM 1 FOR 1)),
     COALESCE(NEW.raw_user_meta_data->>'phone', '1234567890'),
     COALESCE(NEW.raw_user_meta_data->>'phonePrefix', 'CL +56'),
@@ -378,8 +483,8 @@ BEGIN
     email = EXCLUDED.email,
     role = COALESCE(public.users.role, EXCLUDED.role),
     title = COALESCE(public.users.title, EXCLUDED.title),
-    phone = COALESCE(public.users.phone, EXCLUDED.phone),
-    phone_prefix = COALESCE(public.users.phone_prefix, EXCLUDED.phone_prefix),
+    health_service = COALESCE(public.users.health_service, EXCLUDED.health_service),
+    budget_year = COALESCE(public.users.budget_year, EXCLUDED.budget_year),
     updated_at = timezone('utc'::text, now());
   RETURN NEW;
 END;
@@ -390,7 +495,7 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- Sincronizar de auth.users a public.users si hay usuarios existentes
+-- Sincronizar usuarios existentes en auth.users si no estaban en public.users
 INSERT INTO public.users (id, name, email, role, title, comuna, establishment, health_service, avatar, phone, phone_prefix, instagram, country, budget_year)
 SELECT
   id::text,
@@ -400,7 +505,7 @@ SELECT
   COALESCE(raw_user_meta_data->>'title', 'Referente de Programas de Salud'),
   COALESCE(raw_user_meta_data->>'comuna', 'Quilicura (DISAM)'),
   COALESCE(raw_user_meta_data->>'establishment', 'Dirección de Salud / Comunal'),
-  COALESCE(raw_user_meta_data->>'healthService', 'SSMN (Metropolitano Norte)'),
+  COALESCE(raw_user_meta_data->>'healthService', 'Servicio de Salud Metropolitano Norte'),
   UPPER(SUBSTRING(COALESCE(raw_user_meta_data->>'name', email) FROM 1 FOR 1)),
   COALESCE(raw_user_meta_data->>'phone', '1234567890'),
   COALESCE(raw_user_meta_data->>'phonePrefix', 'CL +56'),
@@ -410,7 +515,9 @@ SELECT
 FROM auth.users
 ON CONFLICT (id) DO NOTHING;
 
--- 18. Semillas de Programas de Salud
+-- ==============================================================================
+-- 7. DATOS BASE Y PROGRAMAS DE SALUD DE QUILICURA
+-- ==============================================================================
 INSERT INTO public.health_programs (id, code, name, short_name, description, referente, presupuesto_total, color, icon_name, target_population, coverage, status, year)
 VALUES
   ('praps_cpu', 'CPU', 'PRAPS Cuidados Paliativos Universales', 'Cuidados Paliativos (CPU)', 'Atención integral médica y psicosocial en etapa avanzada en la red APS de Quilicura.', 'Klaus Bauer (DISAM Quilicura)', 68500000, '#0284c7', 'HeartHandshake', '1200', 88, 'activo', 2026),
@@ -425,7 +532,6 @@ ON CONFLICT (id) DO UPDATE SET
   description = EXCLUDED.description,
   referente = EXCLUDED.referente;
 
--- 19. Semillas de Establecimientos de Salud
 INSERT INTO public.establishments (id, name, short_name, code, type, commune, address, phone, director, active)
 VALUES
   ('cesfam_salvador_allende', 'CESFAM Dr. Salvador Allende Gossens', 'CESFAM Salvador Allende', 'CESFAM-01', 'CESFAM', 'Quilicura', 'Av. Las Torres 620', '+56 2 2827 8600', 'Dra. María Paz González', true),

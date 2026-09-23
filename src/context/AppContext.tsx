@@ -135,6 +135,16 @@ import {
   deleteFinancialPeriodFromSupabase,
   upsertBudgetComponentInSupabase,
   deleteBudgetComponentFromSupabase,
+  upsertEmailInSupabase,
+  deleteEmailFromSupabase,
+  upsertDocumentInSupabase,
+  deleteDocumentFromSupabase,
+  upsertHRRecordInSupabase,
+  deleteHRRecordFromSupabase,
+  upsertKnowledgeInSupabase,
+  deleteKnowledgeFromSupabase,
+  upsertBudget2025NoteInSupabase,
+  deleteBudget2025NoteFromSupabase,
   upsertUserInSupabase,
   fetchUserByIdOrEmailFromSupabase,
   generateUUID,
@@ -2426,6 +2436,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         establishments,
         financialPeriods,
         budgetComponents,
+        emails,
+        documents,
+        hrRecords,
+        knowledge,
+        budget2025Notes,
       });
       if (res.success) {
         setSupabaseSyncState('synced');
@@ -2440,7 +2455,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       showToast('Error al respaldar datos en la nube', 'error');
       return { success: false, errors: [err?.message || 'Error desconocido'], insertedCount: 0 };
     }
-  }, [programs, tasks, purchases, meetings, indicators, contacts, questions, establishments, financialPeriods, budgetComponents]);
+  }, [
+    programs,
+    tasks,
+    purchases,
+    meetings,
+    indicators,
+    contacts,
+    questions,
+    establishments,
+    financialPeriods,
+    budgetComponents,
+    emails,
+    documents,
+    hrRecords,
+    knowledge,
+    budget2025Notes,
+  ]);
 
   // Initial database sync and real-time subscription
   useEffect(() => {
@@ -2465,72 +2496,148 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (data.programs?.length) {
             setPrograms((prev) => {
               const map = new Map(prev.map((p) => [p.id, p]));
-              data.programs.forEach((p) => map.set(p.id, p));
+              data.programs.forEach((p) => {
+                const existing = map.get(p.id);
+                map.set(p.id, existing ? { ...existing, ...p } : p);
+              });
               return Array.from(map.values());
             });
           }
           if (data.tasks?.length) {
             setTasks((prev) => {
               const map = new Map(prev.map((t) => [t.id, t]));
-              data.tasks.forEach((t) => map.set(t.id, t));
+              data.tasks.forEach((t) => {
+                const existing = map.get(t.id);
+                map.set(t.id, existing ? { ...existing, ...t } : t);
+              });
               return Array.from(map.values());
             });
           }
           if (data.purchases?.length) {
             setPurchases((prev) => {
               const map = new Map(prev.map((p) => [p.id, p]));
-              data.purchases.forEach((p) => map.set(p.id, p));
+              data.purchases.forEach((p) => {
+                const existing = map.get(p.id);
+                map.set(p.id, existing ? { ...existing, ...p } : p);
+              });
               return Array.from(map.values());
             });
           }
           if (data.meetings?.length) {
             setMeetings((prev) => {
               const map = new Map(prev.map((m) => [m.id, m]));
-              data.meetings.forEach((m) => map.set(m.id, m));
+              data.meetings.forEach((m) => {
+                const existing = map.get(m.id);
+                map.set(m.id, existing ? { ...existing, ...m } : m);
+              });
               return Array.from(map.values());
             });
           }
           if (data.indicators?.length) {
             setIndicators((prev) => {
               const map = new Map(prev.map((i) => [i.id, i]));
-              data.indicators.forEach((i) => map.set(i.id, i));
+              data.indicators.forEach((i) => {
+                const existing = map.get(i.id);
+                map.set(i.id, existing ? { ...existing, ...i } : i);
+              });
               return Array.from(map.values());
             });
           }
           if (data.contacts?.length) {
             setContacts((prev) => {
               const map = new Map(prev.map((c) => [c.id, c]));
-              data.contacts.forEach((c) => map.set(c.id, c));
+              data.contacts.forEach((c) => {
+                const existing = map.get(c.id);
+                map.set(c.id, existing ? { ...existing, ...c } : c);
+              });
               return Array.from(map.values());
             });
           }
           if (data.questions?.length) {
             setQuestions((prev) => {
               const map = new Map(prev.map((q) => [q.id, q]));
-              data.questions.forEach((q) => map.set(q.id, q));
+              data.questions.forEach((q) => {
+                const existing = map.get(q.id);
+                map.set(q.id, existing ? { ...existing, ...q } : q);
+              });
               return Array.from(map.values());
             });
           }
           if (data.establishments?.length) {
             setEstablishments((prev) => {
               const map = new Map(prev.map((e) => [e.id, e]));
-              data.establishments.forEach((e) => map.set(e.id, e));
+              data.establishments.forEach((e) => {
+                const existing = map.get(e.id);
+                map.set(e.id, existing ? { ...existing, ...e } : e);
+              });
               return Array.from(map.values());
             });
           }
           if (data.financialPeriods?.length) {
             setFinancialPeriods((prev) => {
               const map = new Map(prev.map((f) => [f.id, f]));
-              data.financialPeriods.forEach((f) => map.set(f.id, f));
+              data.financialPeriods.forEach((f) => {
+                const existing = map.get(f.id);
+                map.set(f.id, existing ? { ...existing, ...f } : f);
+              });
               return Array.from(map.values());
             });
           }
           if (data.budgetComponents?.length) {
             setBudgetComponents((prev) => {
               const map = new Map(prev.map((b) => [b.id, b]));
-              data.budgetComponents.forEach((b) => map.set(b.id, b));
+              data.budgetComponents.forEach((b) => {
+                const existing = map.get(b.id);
+                map.set(b.id, existing ? { ...existing, ...b } : b);
+              });
               return Array.from(map.values());
             });
+          }
+          if (data.emails?.length) {
+            setEmails((prev) => {
+              const map = new Map(prev.map((e) => [e.id, e]));
+              data.emails.forEach((e) => {
+                const existing = map.get(e.id);
+                map.set(e.id, existing ? { ...existing, ...e } : e);
+              });
+              return Array.from(map.values());
+            });
+          }
+          if (data.documents?.length) {
+            setDocuments((prev) => {
+              const map = new Map(prev.map((d) => [d.id, d]));
+              data.documents.forEach((d) => {
+                const existing = map.get(d.id);
+                map.set(d.id, existing ? { ...existing, ...d } : d);
+              });
+              return Array.from(map.values());
+            });
+          }
+          if (data.hrRecords?.length) {
+            setHrRecords((prev) => {
+              const map = new Map(prev.map((h) => [h.id, h]));
+              data.hrRecords.forEach((h) => {
+                const existing = map.get(h.id);
+                map.set(h.id, existing ? { ...existing, ...h } : h);
+              });
+              return Array.from(map.values());
+            });
+          }
+          if (data.knowledge?.length) {
+            setKnowledge((prev) => {
+              const map = new Map(prev.map((k) => [k.id, k]));
+              data.knowledge.forEach((k) => {
+                const existing = map.get(k.id);
+                map.set(k.id, existing ? { ...existing, ...k } : k);
+              });
+              return Array.from(map.values());
+            });
+          }
+          if (data.budget2025Notes && Object.keys(data.budget2025Notes).length > 0) {
+            setBudget2025Notes((prev) => ({
+              ...prev,
+              ...data.budget2025Notes,
+            }));
           }
 
           setSupabaseLastSyncTime(new Date().toISOString());
@@ -2549,43 +2656,155 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // Auto-refresh when external changes arrive
       if (event.table === 'tasks') {
         pullAllFromSupabase().then((d) => {
-          if (d.tasks?.length) setTasks(d.tasks);
+          if (d.tasks?.length) {
+            setTasks((prev) => {
+              const map = new Map(prev.map((t) => [t.id, t]));
+              d.tasks.forEach((t) => map.set(t.id, t));
+              return Array.from(map.values());
+            });
+          }
         }).catch(() => {});
       } else if (event.table === 'purchases') {
         pullAllFromSupabase().then((d) => {
-          if (d.purchases?.length) setPurchases(d.purchases);
+          if (d.purchases?.length) {
+            setPurchases((prev) => {
+              const map = new Map(prev.map((p) => [p.id, p]));
+              d.purchases.forEach((p) => map.set(p.id, p));
+              return Array.from(map.values());
+            });
+          }
         }).catch(() => {});
       } else if (event.table === 'meetings') {
         pullAllFromSupabase().then((d) => {
-          if (d.meetings?.length) setMeetings(d.meetings);
+          if (d.meetings?.length) {
+            setMeetings((prev) => {
+              const map = new Map(prev.map((m) => [m.id, m]));
+              d.meetings.forEach((m) => map.set(m.id, m));
+              return Array.from(map.values());
+            });
+          }
         }).catch(() => {});
       } else if (event.table === 'indicators') {
         pullAllFromSupabase().then((d) => {
-          if (d.indicators?.length) setIndicators(d.indicators);
+          if (d.indicators?.length) {
+            setIndicators((prev) => {
+              const map = new Map(prev.map((i) => [i.id, i]));
+              d.indicators.forEach((i) => {
+                const existing = map.get(i.id);
+                map.set(i.id, existing ? { ...existing, ...i } : i);
+              });
+              return Array.from(map.values());
+            });
+          }
         }).catch(() => {});
       } else if (event.table === 'contacts') {
         pullAllFromSupabase().then((d) => {
-          if (d.contacts?.length) setContacts(d.contacts);
+          if (d.contacts?.length) {
+            setContacts((prev) => {
+              const map = new Map(prev.map((c) => [c.id, c]));
+              d.contacts.forEach((c) => map.set(c.id, c));
+              return Array.from(map.values());
+            });
+          }
         }).catch(() => {});
       } else if (event.table === 'questions') {
         pullAllFromSupabase().then((d) => {
-          if (d.questions?.length) setQuestions(d.questions);
+          if (d.questions?.length) {
+            setQuestions((prev) => {
+              const map = new Map(prev.map((q) => [q.id, q]));
+              d.questions.forEach((q) => map.set(q.id, q));
+              return Array.from(map.values());
+            });
+          }
         }).catch(() => {});
       } else if (event.table === 'health_programs') {
         pullAllFromSupabase().then((d) => {
-          if (d.programs?.length) setPrograms(d.programs);
+          if (d.programs?.length) {
+            setPrograms((prev) => {
+              const map = new Map(prev.map((p) => [p.id, p]));
+              d.programs.forEach((p) => map.set(p.id, p));
+              return Array.from(map.values());
+            });
+          }
         }).catch(() => {});
       } else if (event.table === 'establishments') {
         pullAllFromSupabase().then((d) => {
-          if (d.establishments?.length) setEstablishments(d.establishments);
+          if (d.establishments?.length) {
+            setEstablishments((prev) => {
+              const map = new Map(prev.map((e) => [e.id, e]));
+              d.establishments.forEach((e) => map.set(e.id, e));
+              return Array.from(map.values());
+            });
+          }
         }).catch(() => {});
       } else if (event.table === 'financial_periods') {
         pullAllFromSupabase().then((d) => {
-          if (d.financialPeriods?.length) setFinancialPeriods(d.financialPeriods);
+          if (d.financialPeriods?.length) {
+            setFinancialPeriods((prev) => {
+              const map = new Map(prev.map((f) => [f.id, f]));
+              d.financialPeriods.forEach((f) => map.set(f.id, f));
+              return Array.from(map.values());
+            });
+          }
         }).catch(() => {});
       } else if (event.table === 'budget_components') {
         pullAllFromSupabase().then((d) => {
-          if (d.budgetComponents?.length) setBudgetComponents(d.budgetComponents);
+          if (d.budgetComponents?.length) {
+            setBudgetComponents((prev) => {
+              const map = new Map(prev.map((b) => [b.id, b]));
+              d.budgetComponents.forEach((b) => map.set(b.id, b));
+              return Array.from(map.values());
+            });
+          }
+        }).catch(() => {});
+      } else if (event.table === 'emails') {
+        pullAllFromSupabase().then((d) => {
+          if (d.emails?.length) {
+            setEmails((prev) => {
+              const map = new Map(prev.map((e) => [e.id, e]));
+              d.emails.forEach((e) => map.set(e.id, e));
+              return Array.from(map.values());
+            });
+          }
+        }).catch(() => {});
+      } else if (event.table === 'documents') {
+        pullAllFromSupabase().then((d) => {
+          if (d.documents?.length) {
+            setDocuments((prev) => {
+              const map = new Map(prev.map((doc) => [doc.id, doc]));
+              d.documents.forEach((doc) => map.set(doc.id, doc));
+              return Array.from(map.values());
+            });
+          }
+        }).catch(() => {});
+      } else if (event.table === 'hr_records') {
+        pullAllFromSupabase().then((d) => {
+          if (d.hrRecords?.length) {
+            setHrRecords((prev) => {
+              const map = new Map(prev.map((h) => [h.id, h]));
+              d.hrRecords.forEach((h) => map.set(h.id, h));
+              return Array.from(map.values());
+            });
+          }
+        }).catch(() => {});
+      } else if (event.table === 'knowledge') {
+        pullAllFromSupabase().then((d) => {
+          if (d.knowledge?.length) {
+            setKnowledge((prev) => {
+              const map = new Map(prev.map((k) => [k.id, k]));
+              d.knowledge.forEach((k) => map.set(k.id, k));
+              return Array.from(map.values());
+            });
+          }
+        }).catch(() => {});
+      } else if (event.table === 'budget_2025_notes') {
+        pullAllFromSupabase().then((d) => {
+          if (d.budget2025Notes && Object.keys(d.budget2025Notes).length > 0) {
+            setBudget2025Notes((prev) => ({
+              ...prev,
+              ...d.budget2025Notes,
+            }));
+          }
         }).catch(() => {});
       } else if (event.table === 'users' && event.newRecord) {
         if (event.newRecord.email && currentUser.email && event.newRecord.email.toLowerCase() === currentUser.email.toLowerCase()) {
@@ -3570,6 +3789,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updateBudget2025Note = (programId: ProgramId, updates: Partial<ProgramBudget2025Note>, targetYear?: number) => {
     const yr = targetYear || updates.year || 2025;
     const key = yr === 2025 ? programId : `${programId}_${yr}`;
+    let noteToSync: ProgramBudget2025Note | undefined;
     setBudget2025Notes((prev) => {
       const current = prev[key] || prev[programId] || {
         programId,
@@ -3577,16 +3797,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         budgetAmount: 0,
         note: `Presupuesto ${yr}`,
       };
+      noteToSync = {
+        ...current,
+        ...updates,
+        year: yr,
+      };
       return {
         ...prev,
-        [key]: {
-          ...current,
-          ...updates,
-          year: yr,
-        },
-        ...(yr === 2025 ? { [programId]: { ...current, ...updates, year: yr } } : {}),
+        [key]: noteToSync,
+        ...(yr === 2025 ? { [programId]: noteToSync } : {}),
       };
     });
+    if (noteToSync && isSupabaseConfigured()) {
+      upsertBudget2025NoteInSupabase(noteToSync).catch((err) =>
+        console.warn('Supabase sync budget note error:', err?.message)
+      );
+    }
     logAudit('Finanzas', programId, 'editar', `Presupuesto referencial ${yr} actualizado para ${programId}`);
     showToast(`Presupuesto ${yr} guardado`, 'success');
   };
@@ -4152,11 +4378,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setEmails((prev) => [newEmail, ...prev]);
     logAudit('Correos', newEmail.id, 'crear', `Requerimiento/Correo registrado: "${newEmail.subject}" (${newEmail.type || 'correo'})`);
     showToast('Requerimiento registrado exitosamente', 'success');
+    if (isSupabaseConfigured()) {
+      upsertEmailInSupabase(newEmail).catch((err) => console.warn('Supabase sync email error:', err?.message));
+    }
     return newEmail;
   };
 
   const updateEmail = (id: string, updates: Partial<PendingEmail>, silentToast = false) => {
     const nowIso = new Date().toISOString();
+    let updatedEmail: PendingEmail | undefined;
     setEmails((prev) =>
       prev.map((e) => {
         if (e.id !== id) return e;
@@ -4177,14 +4407,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           changes.push(`Acción requerida actualizada`);
         }
 
-        return {
+        updatedEmail = {
           ...e,
           ...updates,
           updatedAt: nowIso,
           updatedBy: currentUser.name,
         };
+        return updatedEmail;
       })
     );
+
+    if (updatedEmail && isSupabaseConfigured()) {
+      upsertEmailInSupabase(updatedEmail).catch((err) => console.warn('Supabase update email error:', err?.message));
+    }
 
     // Sincronizar con tarea vinculada si cambia el estado o plazo
     const currentEmail = emails.find((e) => e.id === id);
@@ -4209,6 +4444,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setEmails((prev) => prev.map((e) => (e.id === id ? { ...e, archived: true, deletedAt: nowIso, deletedBy: currentUser.name } : e)));
     logAudit('Correos', id, 'eliminar_logico', `Requerimiento/Correo ${id} archivado`);
     showToast('Requerimiento archivado', 'warning');
+    if (isSupabaseConfigured()) {
+      deleteEmailFromSupabase(id).catch((err) => console.warn('Supabase delete email error:', err?.message));
+    }
   };
 
   const addEmailFollowUp = (emailId: string, followUp: { type: CommunicationFollowUpType; note: string }): CommunicationFollowUp => {
@@ -4221,18 +4459,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       createdAt: nowIso,
       createdBy: currentUser.name,
     };
+    let updatedEmail: PendingEmail | undefined;
     setEmails((prev) =>
       prev.map((e) => {
         if (e.id !== emailId) return e;
         const currentFu = e.followUps || [];
-        return {
+        updatedEmail = {
           ...e,
           followUps: [newFu, ...currentFu],
           updatedAt: nowIso,
           updatedBy: currentUser.name,
         };
+        return updatedEmail;
       })
     );
+    if (updatedEmail && isSupabaseConfigured()) {
+      upsertEmailInSupabase(updatedEmail).catch((err) => console.warn('Supabase update email error:', err?.message));
+    }
     logAudit('Correos', emailId, 'editar', `Hito de seguimiento agregado: "${newFu.note.substring(0, 40)}..."`);
     showToast('Hito de seguimiento registrado', 'success');
     return newFu;
@@ -4240,17 +4483,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const deleteEmailFollowUp = (emailId: string, followUpId: string) => {
     const nowIso = new Date().toISOString();
+    let updatedEmail: PendingEmail | undefined;
     setEmails((prev) =>
       prev.map((e) => {
         if (e.id !== emailId) return e;
-        return {
+        updatedEmail = {
           ...e,
           followUps: (e.followUps || []).filter((f) => f.id !== followUpId),
           updatedAt: nowIso,
           updatedBy: currentUser.name,
         };
+        return updatedEmail;
       })
     );
+    if (updatedEmail && isSupabaseConfigured()) {
+      upsertEmailInSupabase(updatedEmail).catch((err) => console.warn('Supabase update email error:', err?.message));
+    }
     logAudit('Correos', emailId, 'editar', `Hito de seguimiento ${followUpId} eliminado`);
     showToast('Hito eliminado', 'info');
   };
@@ -4673,11 +4921,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setKnowledge((prev) => [newK, ...prev]);
     logAudit('Conocimiento', newK.id, 'crear', `Nuevo criterio/conocimiento: "${newK.title}"`);
     showToast('Conocimiento guardado exitosamente', 'success');
+    if (isSupabaseConfigured()) {
+      upsertKnowledgeInSupabase(newK).catch((err) => console.warn('Supabase sync knowledge error:', err?.message));
+    }
     return newK;
   };
 
   const updateKnowledge = (id: string, updates: Partial<KnowledgeItem>) => {
     const nowIso = new Date().toISOString();
+    let updatedK: KnowledgeItem | undefined;
     setKnowledge((prev) =>
       prev.map((k) => {
         if (k.id !== id) return k;
@@ -4701,7 +4953,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           ? updates.programIds 
           : (updates.programId ? [updates.programId] : k.programIds);
 
-        return {
+        updatedK = {
           ...k,
           ...updates,
           programIds: pIds,
@@ -4710,14 +4962,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           history: [newHistoryEntry, ...currentHistory],
           updatedAt: nowIso,
         };
+        return updatedK;
       })
     );
+    if (updatedK && isSupabaseConfigured()) {
+      upsertKnowledgeInSupabase(updatedK).catch((err) => console.warn('Supabase update knowledge error:', err?.message));
+    }
     logAudit('Conocimiento', id, 'editar', `Conocimiento ${id} actualizado`);
     showToast('Base de Conocimiento actualizada', 'info');
   };
 
   const togglePinKnowledge = (id: string) => {
     const nowIso = new Date().toISOString();
+    let updatedK: KnowledgeItem | undefined;
     setKnowledge((prev) =>
       prev.map((k) => {
         if (k.id !== id) return k;
@@ -4729,15 +4986,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           action: nextPinned ? 'Destacado' : 'Desmarcado',
           details: nextPinned ? 'Marcado como conocimiento destacado' : 'Removido de destacados',
         };
-        return {
+        updatedK = {
           ...k,
           isPinned: nextPinned,
           isFeatured: nextPinned,
           history: [hist, ...(k.history || [])],
           updatedAt: nowIso,
         };
+        return updatedK;
       })
     );
+    if (updatedK && isSupabaseConfigured()) {
+      upsertKnowledgeInSupabase(updatedK).catch((err) => console.warn('Supabase pin knowledge error:', err?.message));
+    }
   };
 
   const deleteKnowledge = (id: string) => {
@@ -4764,10 +5025,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
     logAudit('Conocimiento', id, 'eliminar_logico', `Conocimiento ${id} archivado`);
     showToast('Registro de conocimiento eliminado', 'warning');
+    if (isSupabaseConfigured()) {
+      deleteKnowledgeFromSupabase(id).catch((err) => console.warn('Supabase delete knowledge error:', err?.message));
+    }
   };
 
   const restoreKnowledge = (id: string) => {
     const nowIso = new Date().toISOString();
+    let updatedK: KnowledgeItem | undefined;
     setKnowledge((prev) =>
       prev.map((k) => {
         if (k.id !== id) return k;
@@ -4778,7 +5043,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           action: 'Restauración',
           details: 'Registro restaurado desde la papelera.',
         };
-        return {
+        updatedK = {
           ...k,
           archived: false,
           deletedAt: undefined,
@@ -4786,8 +5051,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           history: [hist, ...(k.history || [])],
           updatedAt: nowIso,
         };
+        return updatedK;
       })
     );
+    if (updatedK && isSupabaseConfigured()) {
+      upsertKnowledgeInSupabase(updatedK).catch((err) => console.warn('Supabase restore knowledge error:', err?.message));
+    }
     logAudit('Conocimiento', id, 'restaurar', `Conocimiento ${id} restaurado`);
     showToast('Conocimiento restaurado con éxito', 'success');
   };
@@ -4796,6 +5065,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setKnowledge((prev) => prev.filter((k) => k.id !== id));
     logAudit('Conocimiento', id, 'eliminar_logico', `Conocimiento ${id} purgado definitivamente`);
     showToast('Conocimiento eliminado definitivamente', 'warning');
+    if (isSupabaseConfigured()) {
+      deleteKnowledgeFromSupabase(id).catch((err) => console.warn('Supabase perm delete knowledge error:', err?.message));
+    }
   };
 
   const addKnowledgeCategory = (category: string) => {
@@ -4923,13 +5195,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setHrRecords((prev) => [newHr, ...prev]);
     logAudit('RRHH', newHr.id, 'crear', `Registro de personal agregado: ${newHr.name} (${newHr.role})`);
     showToast(`Personal ${newHr.name} agregado`, 'success');
+    if (isSupabaseConfigured()) {
+      upsertHRRecordInSupabase(newHr).catch((err) => console.warn('Supabase sync hr record error:', err?.message));
+    }
     return newHr;
   };
 
   const updateHRRecord = (id: string, updates: Partial<HRRecord>, silent = false) => {
+    let updatedHR: HRRecord | undefined;
     setHrRecords((prev) =>
-      prev.map((h) => (h.id === id ? { ...h, ...updates, updatedAt: new Date().toISOString() } : h))
+      prev.map((h) => {
+        if (h.id === id) {
+          updatedHR = { ...h, ...updates, updatedAt: new Date().toISOString() };
+          return updatedHR;
+        }
+        return h;
+      })
     );
+    if (updatedHR && isSupabaseConfigured()) {
+      upsertHRRecordInSupabase(updatedHR).catch((err) => console.warn('Supabase update hr record error:', err?.message));
+    }
     if (!silent) {
       logAudit('RRHH', id, 'editar', `Registro RRHH ${id} actualizado`);
       showToast('Registro de personal actualizado', 'info');
@@ -4940,6 +5225,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setHrRecords((prev) => prev.map((h) => (h.id === id ? { ...h, archived: true } : h)));
     logAudit('RRHH', id, 'eliminar_logico', `Registro RRHH ${id} archivado`);
     showToast('Registro de personal archivado', 'warning');
+    if (isSupabaseConfigured()) {
+      deleteHRRecordFromSupabase(id).catch((err) => console.warn('Supabase delete hr record error:', err?.message));
+    }
   };
 
   const addEleamCase = (eleam: Omit<EleamCase, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -5091,13 +5379,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setDocuments((prev) => [newDoc, ...prev]);
     logAudit('Documentos', newDoc.id, 'crear', `Nuevo documento: ${newDoc.title} (${newDoc.documentType})`);
     showToast(`Documento "${newDoc.title}" registrado exitosamente`, 'success');
+    if (isSupabaseConfigured()) {
+      upsertDocumentInSupabase(newDoc).catch((err) => console.warn('Supabase sync document error:', err?.message));
+    }
     return newDoc;
   };
 
   const updateDocument = (id: string, updates: Partial<DocumentRecord>, silentToast: boolean = false) => {
+    let updatedDoc: DocumentRecord | undefined;
     setDocuments((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, ...updates, updatedAt: new Date().toISOString() } : d))
+      prev.map((d) => {
+        if (d.id === id) {
+          updatedDoc = { ...d, ...updates, updatedAt: new Date().toISOString() };
+          return updatedDoc;
+        }
+        return d;
+      })
     );
+    if (updatedDoc && isSupabaseConfigured()) {
+      upsertDocumentInSupabase(updatedDoc).catch((err) => console.warn('Supabase update document error:', err?.message));
+    }
     logAudit('Documentos', id, 'editar', `Documento ${id} actualizado`);
     if (!silentToast) {
       showToast('Documento actualizado correctamente', 'success');
@@ -5120,6 +5421,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       isCurrent: true,
     };
 
+    let updatedDoc: DocumentRecord | undefined;
     setDocuments((prev) =>
       prev.map((doc) => {
         if (doc.id === documentId) {
@@ -5133,7 +5435,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             'editar',
             `Nueva versión ${newVersion.versionNumber} para documento: ${doc.title}`
           );
-          return {
+          updatedDoc = {
             ...doc,
             version: newVersion.versionNumber,
             fileName: newVersion.fileName,
@@ -5142,10 +5444,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             versions: updatedVersions,
             updatedAt: new Date().toISOString(),
           };
+          return updatedDoc;
         }
         return doc;
       })
     );
+    if (updatedDoc && isSupabaseConfigured()) {
+      upsertDocumentInSupabase(updatedDoc).catch((err) => console.warn('Supabase document version error:', err?.message));
+    }
     showToast(`Nueva versión ${versionData.versionNumber} cargada exitosamente`, 'success');
   };
 
@@ -5154,16 +5460,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setDocuments((prev) => prev.filter((d) => d.id !== id));
       logAudit('Documentos', id, 'eliminar_logico', `Documento ${id} eliminado permanentemente`);
       showToast('Documento eliminado definitivamente', 'warning');
+      if (isSupabaseConfigured()) {
+        deleteDocumentFromSupabase(id).catch((err) => console.warn('Supabase delete doc error:', err?.message));
+      }
     } else {
+      let updatedDoc: DocumentRecord | undefined;
       setDocuments((prev) =>
-        prev.map((d) =>
-          d.id === id
-            ? { ...d, archived: true, deletedAt: new Date().toISOString(), deletedBy: currentUser.name }
-            : d
-        )
+        prev.map((d) => {
+          if (d.id === id) {
+            updatedDoc = { ...d, archived: true, deletedAt: new Date().toISOString(), deletedBy: currentUser.name };
+            return updatedDoc;
+          }
+          return d;
+        })
       );
       logAudit('Documentos', id, 'eliminar_logico', `Documento ${id} archivado (eliminación lógica)`);
       showToast('Documento archivado correctamente', 'warning');
+      if (updatedDoc && isSupabaseConfigured()) {
+        upsertDocumentInSupabase(updatedDoc).catch((err) => console.warn('Supabase soft delete doc error:', err?.message));
+      }
     }
   };
 

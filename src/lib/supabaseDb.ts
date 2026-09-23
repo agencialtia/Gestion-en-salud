@@ -18,11 +18,16 @@ import {
   Establishment,
   FinancialPeriod,
   BudgetComponent,
+  PendingEmail,
+  DocumentRecord,
+  HRRecord,
+  KnowledgeItem,
+  ProgramBudget2025Note,
 } from '../types';
 
 export { SUPABASE_PROJECT_ID, OFFICIAL_SUPABASE_URL };
 
-// UUID validator and generator for PostgreSQL uuid primary keys
+// UUID validator and generator for PostgreSQL primary keys
 export function generateUUID(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -51,26 +56,28 @@ export function ensureUUID(id?: string): string {
 
 // 1. Health Programs
 export function fromDbProgram(row: any): HealthProgram {
-  const budget = Number(row.presupuesto_total) || Number(row.annual_budget) || 0;
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
+  const budget = Number(row.presupuesto_total) || Number(row.annual_budget) || Number(extra.presupuestoTotal) || 0;
   return {
+    ...extra,
     id: row.id,
-    code: row.code || '',
-    name: row.name || '',
-    shortName: row.short_name || row.name || '',
-    description: row.description || '',
-    referente: row.referente || '',
-    email: row.email || undefined,
-    telefono: row.telefono || undefined,
+    code: row.code || extra.code || '',
+    name: row.name || extra.name || '',
+    shortName: row.short_name || extra.shortName || row.name || '',
+    description: row.description || extra.description || '',
+    referente: row.referente || extra.referente || '',
+    email: row.email || extra.email || undefined,
+    telefono: row.telefono || extra.telefono || undefined,
     presupuestoTotal: budget,
-    presupuestoEjecutado: Number(row.presupuesto_ejecutado) || 0,
-    presupuestoComprometido: Number(row.presupuesto_comprometido) || 0,
+    presupuestoEjecutado: Number(row.presupuesto_ejecutado ?? extra.presupuestoEjecutado ?? 0),
+    presupuestoComprometido: Number(row.presupuesto_comprometido ?? extra.presupuestoComprometido ?? 0),
     annualBudget: budget,
-    color: row.color || '#0284c7',
-    iconName: row.icon_name || 'Activity',
-    targetPopulation: typeof row.target_population === 'string' ? row.target_population : (row.target_population ? String(row.target_population) : ''),
-    coverage: Number(row.coverage) || 0,
-    status: row.status || 'activo',
-    year: Number(row.year) || 2026,
+    color: row.color || extra.color || '#0284c7',
+    iconName: row.icon_name || extra.iconName || 'Activity',
+    targetPopulation: typeof row.target_population === 'string' ? row.target_population : (row.target_population ? String(row.target_population) : (extra.targetPopulation || '')),
+    coverage: Number(row.coverage ?? extra.coverage ?? 0),
+    status: row.status || extra.status || 'activo',
+    year: Number(row.year ?? extra.year ?? 2026),
   };
 }
 
@@ -89,36 +96,39 @@ export function toDbProgram(p: HealthProgram): any {
     presupuesto_comprometido: p.presupuestoComprometido || 0,
     color: p.color || '#0284c7',
     icon_name: p.iconName || 'Activity',
-    target_population: p.targetPopulation || 0,
+    target_population: p.targetPopulation || '0',
     coverage: p.coverage || 0,
     status: p.status || 'activo',
     year: p.year || 2026,
+    data: { ...p },
   };
 }
 
 // 2. Tasks
 export function fromDbTask(row: any): Task {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
   return {
+    ...extra,
     id: row.id,
-    programId: row.program_id,
-    title: row.title || '',
-    description: row.description || '',
-    assignedTo: row.assigned_to || '',
-    assignedRole: row.assigned_role || '',
-    establishmentId: row.establishment_id || undefined,
-    startDate: row.start_date || undefined,
-    dueDate: row.due_date || undefined,
-    endDate: row.end_date || undefined,
-    status: row.status || 'pendiente',
-    priority: row.priority || 'media',
-    progress: Number(row.progress) || 0,
-    category: row.category || 'General',
-    checklist: Array.isArray(row.checklist) ? row.checklist : [],
-    budgetAssigned: Number(row.budget_assigned) || 0,
-    milestone: Boolean(row.milestone),
-    notes: row.notes || undefined,
-    createdAt: row.created_at || new Date().toISOString(),
-    updatedAt: row.updated_at || row.created_at || new Date().toISOString(),
+    programId: row.program_id || extra.programId,
+    title: row.title || extra.title || '',
+    description: row.description || extra.description || '',
+    assignedTo: row.assigned_to || extra.assignedTo || '',
+    assignedRole: row.assigned_role || extra.assignedRole || '',
+    establishmentId: row.establishment_id || extra.establishmentId || undefined,
+    startDate: row.start_date || extra.startDate || undefined,
+    dueDate: row.due_date || extra.dueDate || undefined,
+    endDate: row.end_date || extra.endDate || undefined,
+    status: row.status || extra.status || 'pendiente',
+    priority: row.priority || extra.priority || 'media',
+    progress: Number(row.progress ?? extra.progress ?? 0),
+    category: row.category || extra.category || 'General',
+    checklist: Array.isArray(row.checklist) ? row.checklist : (extra.checklist || []),
+    budgetAssigned: Number(row.budget_assigned ?? extra.budgetAssigned ?? 0),
+    milestone: Boolean(row.milestone ?? extra.milestone ?? false),
+    notes: row.notes || extra.notes || undefined,
+    createdAt: row.created_at || extra.createdAt || new Date().toISOString(),
+    updatedAt: row.updated_at || extra.updatedAt || row.created_at || new Date().toISOString(),
   };
 }
 
@@ -143,29 +153,32 @@ export function toDbTask(t: Task): any {
     milestone: Boolean(t.milestone),
     notes: t.notes || null,
     updated_at: new Date().toISOString(),
+    data: { ...t },
   };
 }
 
 // 3. Purchases
 export function fromDbPurchase(row: any): Purchase {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
   return {
+    ...extra,
     id: row.id,
-    programId: row.program_id,
-    establishmentId: row.establishment_id || undefined,
-    code: row.code || '',
-    description: row.description || '',
-    justification: row.justification || '',
-    estimatedAmount: Number(row.estimated_amount) || 0,
-    actualAmount: row.actual_amount !== null ? Number(row.actual_amount) : undefined,
-    supplier: row.supplier || '',
-    status: row.status || 'solicitado',
-    priority: row.priority || 'media',
-    category: row.category || 'general',
-    requestDate: row.request_date || undefined,
-    ordenCompra: row.orden_compra || undefined,
-    folioMercadoPublico: row.folio_mercado_publico || undefined,
-    responsibleUser: row.responsible_user || undefined,
-    createdAt: row.created_at || new Date().toISOString(),
+    programId: row.program_id || extra.programId,
+    establishmentId: row.establishment_id || extra.establishmentId || undefined,
+    code: row.code || extra.code || '',
+    description: row.description || extra.description || '',
+    justification: row.justification || extra.justification || '',
+    estimatedAmount: Number(row.estimated_amount ?? extra.estimatedAmount ?? 0),
+    actualAmount: row.actual_amount !== null && row.actual_amount !== undefined ? Number(row.actual_amount) : extra.actualAmount,
+    supplier: row.supplier || extra.supplier || '',
+    status: row.status || extra.status || 'solicitado',
+    priority: row.priority || extra.priority || 'media',
+    category: row.category || extra.category || 'general',
+    requestDate: row.request_date || extra.requestDate || undefined,
+    ordenCompra: row.orden_compra || extra.ordenCompra || undefined,
+    folioMercadoPublico: row.folio_mercado_publico || extra.folioMercadoPublico || undefined,
+    responsibleUser: row.responsible_user || extra.responsibleUser || undefined,
+    createdAt: row.created_at || extra.createdAt || new Date().toISOString(),
   };
 }
 
@@ -187,24 +200,27 @@ export function toDbPurchase(p: Purchase): any {
     orden_compra: p.ordenCompra || null,
     folio_mercado_publico: p.folioMercadoPublico || null,
     responsible_user: p.responsibleUser || null,
+    data: { ...p },
   };
 }
 
 // 4. Meetings
 export function fromDbMeeting(row: any): Meeting {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
   return {
+    ...extra,
     id: row.id,
-    programId: row.program_id,
-    title: row.title || '',
-    date: row.date || '',
-    time: row.time || '',
-    location: row.location || '',
-    status: row.status || 'programada',
-    summary: row.summary || '',
-    participants: Array.isArray(row.participants) ? row.participants : [],
-    agreements: Array.isArray(row.agreements) ? row.agreements : [],
-    commitments: Array.isArray(row.commitments) ? row.commitments : [],
-    createdAt: row.created_at || new Date().toISOString(),
+    programId: row.program_id || extra.programId,
+    title: row.title || extra.title || '',
+    date: row.date || extra.date || '',
+    time: row.time || extra.time || '',
+    location: row.location || extra.location || '',
+    status: row.status || extra.status || 'programada',
+    summary: row.summary || extra.summary || '',
+    participants: Array.isArray(row.participants) ? row.participants : (extra.participants || []),
+    agreements: Array.isArray(row.agreements) ? row.agreements : (extra.agreements || []),
+    commitments: Array.isArray(row.commitments) ? row.commitments : (extra.commitments || []),
+    createdAt: row.created_at || extra.createdAt || new Date().toISOString(),
   };
 }
 
@@ -221,70 +237,202 @@ export function toDbMeeting(m: Meeting): any {
     participants: Array.isArray(m.participants) ? m.participants : [],
     agreements: Array.isArray(m.agreements) ? m.agreements : [],
     commitments: Array.isArray(m.commitments) ? m.commitments : [],
+    data: { ...m },
   };
 }
 
-// 5. Indicators
+// 5. Indicators (Ficha de Indicador Completa con Cortes y Metas)
 export function fromDbIndicator(row: any): Indicator {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
+
+  const annualTarget = row.annual_target !== undefined && row.annual_target !== null
+    ? Number(row.annual_target)
+    : (extra.annualTarget !== undefined ? Number(extra.annualTarget) : (Number(row.target_value) || 100));
+
+  const periodTarget = row.period_target !== undefined && row.period_target !== null
+    ? Number(row.period_target)
+    : (extra.periodTarget !== undefined ? Number(extra.periodTarget) : annualTarget);
+
+  const currentResult = row.current_result !== undefined && row.current_result !== null
+    ? Number(row.current_result)
+    : (extra.currentResult !== undefined ? Number(extra.currentResult) : (Number(row.current_value) || 0));
+
+  const corte1 = row.corte1 ?? extra.corte1 ?? {
+    target: periodTarget,
+    targetQuantity: row.period_target_quantity !== undefined && row.period_target_quantity !== null ? Number(row.period_target_quantity) : extra.periodTargetQuantity,
+    result: currentResult,
+    resultQuantity: row.current_result_quantity !== undefined && row.current_result_quantity !== null ? Number(row.current_result_quantity) : extra.currentResultQuantity,
+    date: '2026-07-31',
+    source: row.source || extra.source || 'REM / Rayen',
+  };
+
+  const corte2 = row.corte2 ?? extra.corte2 ?? {
+    target: annualTarget,
+    targetQuantity: row.annual_target_quantity !== undefined && row.annual_target_quantity !== null ? Number(row.annual_target_quantity) : extra.annualTargetQuantity,
+    result: currentResult,
+    resultQuantity: row.current_result_quantity !== undefined && row.current_result_quantity !== null ? Number(row.current_result_quantity) : extra.currentResultQuantity,
+    date: '2026-12-31',
+    source: row.source || extra.source || 'REM / Rayen',
+  };
+
   return {
+    ...extra,
     id: row.id,
-    programId: row.program_id,
-    code: row.code || '',
-    name: row.name || '',
-    description: row.description || '',
-    targetValue: Number(row.target_value) || 100,
-    currentValue: Number(row.current_value) || 0,
-    unit: row.unit || '%',
-    periodicity: row.periodicity || 'mensual',
-    weight: Number(row.weight) || 1,
-    goodThreshold: Number(row.good_threshold) || 85,
-    warningThreshold: Number(row.warning_threshold) || 70,
-    measurements: Array.isArray(row.measurements) ? row.measurements : [],
-    cuts: Array.isArray(row.cuts) ? row.cuts : [],
+    programId: row.program_id || extra.programId,
+    code: row.code || extra.code || '',
+    name: row.name || extra.name || '',
+    description: row.description || extra.description || '',
+    targetValue: annualTarget,
+    currentValue: currentResult,
+    annualTarget,
+    annualTargetQuantity: row.annual_target_quantity !== undefined && row.annual_target_quantity !== null
+      ? Number(row.annual_target_quantity)
+      : extra.annualTargetQuantity,
+    periodTarget,
+    periodTargetQuantity: row.period_target_quantity !== undefined && row.period_target_quantity !== null
+      ? Number(row.period_target_quantity)
+      : extra.periodTargetQuantity,
+    currentResult,
+    currentResultQuantity: row.current_result_quantity !== undefined && row.current_result_quantity !== null
+      ? Number(row.current_result_quantity)
+      : extra.currentResultQuantity,
+    unit: row.unit || extra.unit || '%',
+    periodicity: row.periodicity || extra.periodicity || 'mensual',
+    weight: row.weight !== undefined && row.weight !== null ? Number(row.weight) : (extra.weight ?? 1),
+    goodThreshold: Number(row.good_threshold ?? extra.goodThreshold ?? 85),
+    warningThreshold: Number(row.warning_threshold ?? extra.warningThreshold ?? 70),
+    measurements: Array.isArray(row.measurements) ? row.measurements : (extra.measurements || []),
+    cuts: Array.isArray(row.cuts) ? row.cuts : (extra.cuts || []),
     lastUpdated: row.last_updated || row.created_at || new Date().toISOString(),
+
+    componente: row.componente ?? extra.componente,
+    objetivoEspecifico: row.objetivo_especifico ?? extra.objetivoEspecifico ?? row.description,
+    corteSeleccionado: row.corte_seleccionado ?? extra.corteSeleccionado ?? '1° corte',
+    numeradorDescripcion: row.numerador_descripcion ?? extra.numeradorDescripcion,
+    numeradorValor: row.numerador_valor !== undefined && row.numerador_valor !== null
+      ? Number(row.numerador_valor)
+      : extra.numeradorValor,
+    numeradorTipo: row.numerador_tipo ?? extra.numeradorTipo ?? 'porcentaje',
+    denominadorDescripcion: row.denominador_descripcion ?? extra.denominadorDescripcion,
+    denominadorValor: row.denominador_valor !== undefined && row.denominador_valor !== null
+      ? Number(row.denominador_valor)
+      : extra.denominadorValor,
+    denominadorTipo: row.denominador_tipo ?? extra.denominadorTipo ?? 'porcentaje',
+    pesoRelativo: row.peso_relativo !== undefined && row.peso_relativo !== null
+      ? Number(row.peso_relativo)
+      : (extra.pesoRelativo ?? 50),
+    medioVerificacionNumerador: row.medio_verificacion_numerador ?? extra.medioVerificacionNumerador,
+    medioVerificacionDenominador: row.medio_verificacion_denominador ?? extra.medioVerificacionDenominador,
+    metaCumplimientoAnualTexto: row.meta_cumplimiento_anual_texto ?? extra.metaCumplimientoAnualTexto,
+    metaCumplimientoAnualPorcentaje: row.meta_cumplimiento_anual_porcentaje !== undefined && row.meta_cumplimiento_anual_porcentaje !== null
+      ? Number(row.meta_cumplimiento_anual_porcentaje)
+      : (extra.metaCumplimientoAnualPorcentaje ?? annualTarget),
+    cutoffDate: row.cutoff_date ?? extra.cutoffDate,
+    source: row.source ?? extra.source ?? 'REM / Rayen',
+    corte1,
+    corte2,
+    corte3: row.corte3 ?? extra.corte3,
   };
 }
 
 export function toDbIndicator(i: Indicator): any {
+  const targetVal = Number(i.annualTarget ?? i.targetValue ?? 100);
+  const currentVal = Number(i.currentResult ?? i.currentValue ?? 0);
+  const weightVal = Number(i.pesoRelativo ?? i.weight ?? 1);
+
   return {
     id: ensureUUID(i.id),
     program_id: i.programId || 'praps_cpu',
     code: i.code || '',
     name: i.name || '',
-    description: i.description || '',
-    target_value: i.targetValue || 100,
-    current_value: i.currentValue || 0,
+    description: i.description || i.objetivoEspecifico || '',
+    target_value: isNaN(targetVal) ? 100 : targetVal,
+    current_value: isNaN(currentVal) ? 0 : currentVal,
     unit: i.unit || '%',
     periodicity: i.periodicity || 'mensual',
-    weight: i.weight || 1,
-    good_threshold: i.goodThreshold || 85,
-    warning_threshold: i.warningThreshold || 70,
+    weight: isNaN(weightVal) ? 1 : weightVal,
+    good_threshold: Number(i.goodThreshold) || 85,
+    warning_threshold: Number(i.warningThreshold) || 70,
     measurements: Array.isArray(i.measurements) ? i.measurements : [],
     cuts: Array.isArray(i.cuts) ? i.cuts : [],
     last_updated: new Date().toISOString(),
+
+    // Columnas extendidas
+    componente: i.componente || null,
+    objetivo_especifico: i.objetivoEspecifico || i.description || null,
+    corte_seleccionado: i.corteSeleccionado || '1° corte',
+    numerador_descripcion: i.numeradorDescripcion || null,
+    numerador_valor: i.numeradorValor !== undefined ? Number(i.numeradorValor) : null,
+    numerador_tipo: i.numeradorTipo || 'porcentaje',
+    denominador_descripcion: i.denominadorDescripcion || null,
+    denominador_valor: i.denominadorValor !== undefined ? Number(i.denominadorValor) : null,
+    denominador_tipo: i.denominadorTipo || 'porcentaje',
+    peso_relativo: i.pesoRelativo !== undefined ? Number(i.pesoRelativo) : weightVal,
+    medio_verificacion_numerador: i.medioVerificacionNumerador || null,
+    medio_verificacion_denominador: i.medioVerificacionDenominador || null,
+    meta_cumplimiento_anual_texto: i.metaCumplimientoAnualTexto || null,
+    meta_cumplimiento_anual_porcentaje: i.metaCumplimientoAnualPorcentaje !== undefined ? Number(i.metaCumplimientoAnualPorcentaje) : targetVal,
+    annual_target: i.annualTarget !== undefined ? Number(i.annualTarget) : targetVal,
+    annual_target_quantity: i.annualTargetQuantity !== undefined ? Number(i.annualTargetQuantity) : null,
+    period_target: i.periodTarget !== undefined ? Number(i.periodTarget) : targetVal,
+    period_target_quantity: i.periodTargetQuantity !== undefined ? Number(i.periodTargetQuantity) : null,
+    current_result: i.currentResult !== undefined ? Number(i.currentResult) : currentVal,
+    current_result_quantity: i.currentResultQuantity !== undefined ? Number(i.currentResultQuantity) : null,
+    source: i.source || 'REM / Rayen',
+    cutoff_date: i.cutoffDate || null,
+    corte1: i.corte1 || null,
+    corte2: i.corte2 || null,
+    corte3: i.corte3 || null,
+    data: { ...i },
+  };
+}
+
+export function toMinimalDbIndicator(i: Indicator): any {
+  const targetVal = Number(i.annualTarget ?? i.targetValue ?? 100);
+  const currentVal = Number(i.currentResult ?? i.currentValue ?? 0);
+  const weightVal = Number(i.pesoRelativo ?? i.weight ?? 1);
+  return {
+    id: ensureUUID(i.id),
+    program_id: i.programId || 'praps_cpu',
+    code: i.code || '',
+    name: i.name || '',
+    description: i.description || i.objetivoEspecifico || '',
+    target_value: isNaN(targetVal) ? 100 : targetVal,
+    current_value: isNaN(currentVal) ? 0 : currentVal,
+    unit: i.unit || '%',
+    periodicity: i.periodicity || 'mensual',
+    weight: isNaN(weightVal) ? 1 : weightVal,
+    good_threshold: Number(i.goodThreshold) || 85,
+    warning_threshold: Number(i.warningThreshold) || 70,
+    measurements: Array.isArray(i.measurements) ? i.measurements : [],
+    cuts: Array.isArray(i.cuts) ? i.cuts : [],
+    last_updated: new Date().toISOString(),
+    data: { ...i },
   };
 }
 
 // 6. Contacts
 export function fromDbContact(row: any): Contact {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
   const pIds = Array.isArray(row.program_ids)
     ? row.program_ids
     : (Array.isArray(row.programIds)
       ? row.programIds
-      : (row.program_id ? [row.program_id] : (row.programId ? [row.programId] : [])));
+      : (row.program_id ? [row.program_id] : (extra.programIds || [])));
 
   return {
+    ...extra,
     id: row.id,
-    programId: row.program_id || (pIds.length > 0 ? pIds[0] : undefined),
+    programId: row.program_id || (pIds.length > 0 ? pIds[0] : undefined) || extra.programId,
     programIds: pIds,
-    name: row.name || '',
-    lastName: row.last_name || '',
-    role: row.role || '',
-    institution: row.institution || '',
-    email: row.email || '',
-    phone: row.phone || '',
-    contactType: row.contact_type || 'referente_comunal',
-    createdAt: row.created_at || new Date().toISOString(),
+    name: row.name || extra.name || '',
+    lastName: row.last_name || extra.lastName || '',
+    role: row.role || extra.role || '',
+    institution: row.institution || extra.institution || '',
+    email: row.email || extra.email || '',
+    phone: row.phone || extra.phone || '',
+    contactType: row.contact_type || extra.contactType || 'referente_comunal',
+    createdAt: row.created_at || extra.createdAt || new Date().toISOString(),
   };
 }
 
@@ -293,6 +441,7 @@ export function toDbContact(c: Contact): any {
   return {
     id: ensureUUID(c.id),
     program_id: pId,
+    program_ids: Array.isArray(c.programIds) ? c.programIds : [pId],
     name: c.name || '',
     last_name: c.lastName || '',
     role: c.role || '',
@@ -300,26 +449,29 @@ export function toDbContact(c: Contact): any {
     email: c.email || '',
     phone: c.phone || '',
     contact_type: c.contactType || 'referente_comunal',
+    data: { ...c },
   };
 }
 
-// 7. Questions
+// 7. Questions (Dudas / Orientaciones Técnicas)
 export function fromDbQuestion(row: any): Question {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
   return {
+    ...extra,
     id: row.id,
-    programId: row.program_id,
-    askedBy: row.asked_by || '',
-    category: row.category || 'orientacion_tecnica',
-    question: row.question || '',
-    answer: row.answer || '',
-    status: row.status || 'pendiente',
-    priority: row.priority || 'media',
-    date: row.date || new Date().toISOString().split('T')[0],
-    dueDate: row.due_date || undefined,
-    answeredBy: row.answered_by || undefined,
-    answeredDate: row.answered_date || undefined,
-    followUps: Array.isArray(row.follow_ups) ? row.follow_ups : [],
-    createdAt: row.created_at || new Date().toISOString(),
+    programId: row.program_id || extra.programId,
+    askedBy: row.asked_by || extra.askedBy || '',
+    category: row.category || extra.category || 'orientacion_tecnica',
+    question: row.question || extra.question || '',
+    answer: row.answer || extra.answer || '',
+    status: row.status || extra.status || 'pendiente',
+    priority: row.priority || extra.priority || 'media',
+    date: row.date || extra.date || new Date().toISOString().split('T')[0],
+    dueDate: row.due_date || extra.dueDate || undefined,
+    answeredBy: row.answered_by || extra.answeredBy || undefined,
+    answeredDate: row.answered_date || extra.answeredDate || undefined,
+    followUps: Array.isArray(row.follow_ups) ? row.follow_ups : (extra.followUps || []),
+    createdAt: row.created_at || extra.createdAt || new Date().toISOString(),
   };
 }
 
@@ -338,19 +490,22 @@ export function toDbQuestion(q: Question): any {
     answered_by: q.answeredBy || null,
     answered_date: q.answeredDate || null,
     follow_ups: Array.isArray(q.followUps) ? q.followUps : [],
+    data: { ...q },
   };
 }
 
 // 8. Alerts
 export function fromDbAlert(row: any): Alert {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
   return {
+    ...extra,
     id: row.id,
-    programId: row.program_id,
-    type: row.type || 'sistema',
-    severity: row.severity || 'media',
-    title: row.title || '',
-    message: row.message || '',
-    createdAt: row.created_at || new Date().toISOString(),
+    programId: row.program_id || extra.programId,
+    type: row.type || extra.type || 'sistema',
+    severity: row.severity || extra.severity || 'media',
+    title: row.title || extra.title || '',
+    message: row.message || extra.message || '',
+    createdAt: row.created_at || extra.createdAt || new Date().toISOString(),
   };
 }
 
@@ -362,27 +517,30 @@ export function toDbAlert(a: Alert): any {
     severity: a.severity || 'media',
     title: a.title || '',
     message: a.message || '',
+    data: { ...a },
   };
 }
 
 // 9. Users
 export function fromDbUser(row: any): User {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
   return {
+    ...extra,
     id: row.id,
-    name: row.name || '',
-    email: row.email || '',
-    role: row.role || 'referente',
-    title: row.title || 'Referente Comunal',
-    comuna: row.comuna || 'Quilicura (DISAM)',
-    establishment: row.establishment || 'Dirección de Salud / Comunal',
-    healthService: row.health_service || 'SSMN (Metropolitano Norte)',
-    avatar: row.avatar || (row.name ? row.name.charAt(0).toUpperCase() : 'U'),
-    photoUrl: row.photo_url || undefined,
-    phone: row.phone || undefined,
-    phonePrefix: row.phone_prefix || 'CL +56',
-    instagram: row.instagram || undefined,
-    country: row.country || 'Chile',
-    budgetYear: row.budget_year || '2026',
+    name: row.name || extra.name || '',
+    email: row.email || extra.email || '',
+    role: row.role || extra.role || 'referente',
+    title: row.title || extra.title || 'Referente Comunal',
+    comuna: row.comuna || extra.comuna || 'Quilicura (DISAM)',
+    establishment: row.establishment || extra.establishment || 'Dirección de Salud / Comunal',
+    healthService: row.health_service || extra.healthService || 'Servicio de Salud Metropolitano Norte',
+    avatar: row.avatar || extra.avatar || (row.name ? row.name.charAt(0).toUpperCase() : 'U'),
+    photoUrl: row.photo_url || extra.photoUrl || undefined,
+    phone: row.phone || extra.phone || undefined,
+    phonePrefix: row.phone_prefix || extra.phonePrefix || 'CL +56',
+    instagram: row.instagram || extra.instagram || undefined,
+    country: row.country || extra.country || 'Chile',
+    budgetYear: row.budget_year || extra.budgetYear || '2026',
   };
 }
 
@@ -395,7 +553,7 @@ export function toDbUser(u: Partial<User> & { id: string; email?: string; name?:
     title: u.title || 'Referente de Programas de Salud',
     comuna: u.comuna || 'Quilicura (DISAM)',
     establishment: u.establishment || 'Dirección de Salud / Comunal',
-    health_service: u.healthService || 'SSMN (Metropolitano Norte)',
+    health_service: u.healthService || 'Servicio de Salud Metropolitano Norte',
     avatar: u.avatar || (u.name ? u.name.charAt(0).toUpperCase() : 'U'),
     photo_url: u.photoUrl || null,
     phone: u.phone || null,
@@ -404,8 +562,311 @@ export function toDbUser(u: Partial<User> & { id: string; email?: string; name?:
     country: u.country || 'Chile',
     budget_year: Number(u.budgetYear) || 2026,
     updated_at: new Date().toISOString(),
+    data: { ...u },
   };
 }
+
+// 10. Establishments
+export function fromDbEstablishment(row: any): Establishment {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
+  return {
+    ...extra,
+    id: row.id,
+    name: row.name || extra.name || '',
+    code: row.code || extra.code || '',
+    type: row.type || extra.type || 'CESFAM',
+    address: row.address || extra.address || '',
+    director: row.director || extra.director || '',
+    phone: row.phone || extra.phone || '',
+    email: row.email || extra.email || '',
+  };
+}
+
+export function toDbEstablishment(e: Establishment): any {
+  return {
+    id: e.id,
+    name: e.name || '',
+    code: e.code || '',
+    type: e.type || 'CESFAM',
+    address: e.address || '',
+    director: e.director || '',
+    phone: e.phone || '',
+    email: e.email || '',
+    data: { ...e },
+  };
+}
+
+// 11. Financial Periods
+export function fromDbFinancialPeriod(row: any): FinancialPeriod {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
+  return {
+    ...extra,
+    id: row.id,
+    programId: row.program_id || extra.programId,
+    month: row.month || extra.month || '',
+    year: Number(row.year ?? extra.year ?? 2026),
+    periodName: row.period_name || extra.periodName || '',
+    presupuestoAsignado: Number(row.presupuesto_asignado ?? extra.presupuestoAsignado ?? 0),
+    presupuestoEjecutado: Number(row.presupuesto_ejecutado ?? extra.presupuestoEjecutado ?? 0),
+    presupuestoComprometido: Number(row.presupuesto_comprometido ?? extra.presupuestoComprometido ?? 0),
+    saldoDisponible: Number(row.saldo_disponible ?? extra.saldoDisponible ?? 0),
+    rendicionEnviada: Boolean(row.rendicion_enviada ?? extra.rendicionEnviada ?? false),
+    rendicionAprobada: Boolean(row.rendicion_aprobada ?? extra.rendicionAprobada ?? false),
+    fechaRendicion: row.fecha_rendicion || extra.fechaRendicion || undefined,
+    observacionesRendicion: row.observaciones_rendicion || extra.observacionesRendicion || '',
+  };
+}
+
+export function toDbFinancialPeriod(f: FinancialPeriod): any {
+  return {
+    id: ensureUUID(f.id),
+    program_id: f.programId || 'praps_cpu',
+    period_name: f.periodName || '',
+    year: f.year || 2026,
+    allocated_budget: f.presupuestoAsignado || 0,
+    executed_budget: f.presupuestoEjecutado || 0,
+    committed_budget: f.presupuestoComprometido || 0,
+    available_budget: f.saldoDisponible || 0,
+    notes: f.observacionesRendicion || null,
+    data: { ...f },
+  };
+}
+
+// 12. Budget Components
+export function fromDbBudgetComponent(row: any): BudgetComponent {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
+  return {
+    ...extra,
+    id: row.id,
+    programId: row.program_id || extra.programId,
+    name: row.name || extra.name || '',
+    budgetToSpend: Number(row.budget_to_spend ?? extra.budgetToSpend ?? 0),
+    spentAmount: Number(row.spent_amount ?? extra.spentAmount ?? 0),
+    category: row.category || extra.category || 'Personal',
+    description: row.description || extra.description || '',
+  };
+}
+
+export function toDbBudgetComponent(b: BudgetComponent): any {
+  return {
+    id: ensureUUID(b.id),
+    program_id: b.programId || 'praps_cpu',
+    name: b.name || '',
+    budget_to_spend: b.budgetToSpend || 0,
+    spent_amount: b.spentAmount || 0,
+    category: b.category || 'Personal',
+    description: b.description || null,
+    data: { ...b },
+  };
+}
+
+// 13. Emails (PendingEmail)
+export function fromDbEmail(row: any): PendingEmail {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
+  return {
+    ...extra,
+    id: row.id,
+    programId: row.program_id || extra.programId,
+    from: row.from_email || row.sender || extra.from || '',
+    to: row.to_email || row.recipient || extra.to || '',
+    subject: row.subject || extra.subject || '',
+    body: row.body || extra.body || '',
+    date: row.date || extra.date || row.created_at || new Date().toISOString(),
+    dueDate: row.due_date || extra.dueDate,
+    status: row.status || extra.status || 'pendiente',
+    priority: row.priority || extra.priority || 'media',
+    type: row.type || extra.type || 'correo',
+    sender: row.sender || row.from_email || extra.sender,
+    recipient: row.recipient || row.to_email || extra.recipient,
+    receivedOrSentDate: row.date || extra.receivedOrSentDate,
+    responsible: row.responsible || extra.responsible,
+    archived: Boolean(row.archived ?? extra.archived ?? false),
+  };
+}
+
+export function toDbEmail(e: PendingEmail): any {
+  return {
+    id: ensureUUID(e.id),
+    program_id: e.programId || 'praps_cpu',
+    from_email: e.from || e.sender || '',
+    to_email: e.to || e.recipient || '',
+    subject: e.subject || '',
+    body: e.body || '',
+    status: e.status || 'pendiente',
+    priority: e.priority || 'media',
+    type: e.type || 'correo',
+    date: e.date || new Date().toISOString(),
+    due_date: e.dueDate || null,
+    archived: Boolean(e.archived),
+    data: { ...e },
+  };
+}
+
+// 14. Documents (DocumentRecord)
+export function fromDbDocument(row: any): DocumentRecord {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
+  return {
+    ...extra,
+    id: row.id,
+    programId: row.program_id || extra.programId,
+    programIds: Array.isArray(row.program_ids) ? row.program_ids : (extra.programIds || (row.program_id ? [row.program_id] : [])),
+    title: row.title || extra.title || '',
+    description: row.description || extra.description || '',
+    category: row.category || extra.category || 'convenio',
+    documentType: row.document_type || extra.documentType || 'convenio',
+    documentNumber: row.document_number || extra.documentNumber,
+    issuingBody: row.issuing_body || extra.issuingBody,
+    institution: row.institution || extra.institution,
+    documentDate: row.document_date || extra.documentDate,
+    validFrom: row.valid_from || extra.validFrom,
+    validUntil: row.valid_until || extra.validUntil,
+    expirationDate: row.expiration_date || extra.expirationDate,
+    status: row.status || extra.status || 'vigente',
+    fileName: row.file_name || extra.fileName,
+    fileSize: row.file_size || extra.fileSize,
+    uploadDate: row.upload_date || extra.uploadDate || row.created_at,
+    uploadedBy: row.uploaded_by || extra.uploadedBy,
+    responsible: row.responsible || extra.responsible,
+    version: row.version || extra.version || '1.0',
+    tags: Array.isArray(row.tags) ? row.tags : (extra.tags || []),
+    notes: row.notes || extra.notes,
+    createdAt: row.created_at || extra.createdAt,
+    updatedAt: row.updated_at || extra.updatedAt,
+    archived: Boolean(row.archived ?? extra.archived ?? false),
+  };
+}
+
+export function toDbDocument(d: DocumentRecord): any {
+  return {
+    id: ensureUUID(d.id),
+    program_id: d.programId || (d.programIds && d.programIds[0]) || 'praps_cpu',
+    program_ids: Array.isArray(d.programIds) ? d.programIds : (d.programId ? [d.programId] : []),
+    title: d.title || '',
+    description: d.description || '',
+    category: d.category || 'convenio',
+    document_type: d.documentType || 'convenio',
+    document_number: d.documentNumber || null,
+    status: d.status || 'vigente',
+    file_name: d.fileName || null,
+    file_size: d.fileSize || null,
+    upload_date: d.uploadDate || new Date().toISOString(),
+    uploaded_by: d.uploadedBy || null,
+    archived: Boolean(d.archived),
+    data: { ...d },
+  };
+}
+
+// 15. HR Records (HRRecord)
+export function fromDbHRRecord(row: any): HRRecord {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
+  return {
+    ...extra,
+    id: row.id,
+    programId: row.program_id || extra.programId,
+    establishmentId: row.establishment_id || extra.establishmentId,
+    name: row.name || extra.name || '',
+    rut: row.rut || extra.rut || '',
+    role: row.role || extra.role || '',
+    hours: row.hours !== undefined && row.hours !== null ? Number(row.hours) : (extra.hours ?? 44),
+    contractType: row.contract_type || extra.contractType || 'Contrata',
+    monthlyCost: row.monthly_cost !== undefined && row.monthly_cost !== null ? Number(row.monthly_cost) : extra.monthlyCost,
+    startDate: row.start_date || extra.startDate,
+    endDate: row.end_date || extra.endDate,
+    status: row.status || extra.status || 'activo',
+    archived: Boolean(row.archived ?? extra.archived ?? false),
+  };
+}
+
+export function toDbHRRecord(h: HRRecord): any {
+  return {
+    id: ensureUUID(h.id),
+    program_id: h.programId || 'praps_cpu',
+    establishment_id: h.establishmentId || null,
+    name: h.name || '',
+    rut: h.rut || '',
+    role: h.role || '',
+    hours: Number(h.hours) || 44,
+    contract_type: h.contractType || 'Contrata',
+    monthly_cost: Number(h.monthlyCost) || 0,
+    start_date: h.startDate || null,
+    end_date: h.endDate || null,
+    status: h.status || 'activo',
+    archived: Boolean(h.archived),
+    data: { ...h },
+  };
+}
+
+// 16. Knowledge (KnowledgeItem)
+export function fromDbKnowledge(row: any): KnowledgeItem {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
+  return {
+    ...extra,
+    id: row.id,
+    programId: row.program_id || extra.programId,
+    programIds: Array.isArray(row.program_ids) ? row.program_ids : (extra.programIds || (row.program_id ? [row.program_id] : [])),
+    title: row.title || extra.title || '',
+    category: row.category || extra.category || 'General',
+    content: row.content || extra.content || '',
+    tags: Array.isArray(row.tags) ? row.tags : (extra.tags || []),
+    author: row.author || extra.author,
+    date: row.date || extra.date || row.created_at,
+    createdAt: row.created_at || extra.createdAt,
+    updatedAt: row.updated_at || extra.updatedAt,
+    archived: Boolean(row.archived ?? extra.archived ?? false),
+  };
+}
+
+export function toDbKnowledge(k: KnowledgeItem): any {
+  return {
+    id: ensureUUID(k.id),
+    program_id: k.programId || (k.programIds && k.programIds[0]) || 'praps_cpu',
+    program_ids: Array.isArray(k.programIds) ? k.programIds : (k.programId ? [k.programId] : []),
+    title: k.title || '',
+    category: k.category || 'General',
+    content: k.content || '',
+    tags: Array.isArray(k.tags) ? k.tags : [],
+    author: k.author || null,
+    date: k.date || new Date().toISOString(),
+    archived: Boolean(k.archived),
+    data: { ...k },
+  };
+}
+
+// 17. Budget 2025 Notes (ProgramBudget2025Note)
+export function fromDbBudget2025Note(row: any): ProgramBudget2025Note {
+  const extra = row.data && typeof row.data === 'object' ? row.data : {};
+  return {
+    ...extra,
+    id: row.id,
+    programId: row.program_id || extra.programId,
+    note: row.note || extra.note || '',
+    author: row.author || extra.author || '',
+    date: row.date || extra.date || row.created_at || new Date().toISOString(),
+    type: row.type || extra.type || 'presupuesto',
+    budgetAmount: row.budget_amount !== undefined && row.budget_amount !== null ? Number(row.budget_amount) : extra.budgetAmount,
+    executedAmount: row.executed_amount !== undefined && row.executed_amount !== null ? Number(row.executed_amount) : extra.executedAmount,
+    fulfillmentRate: row.fulfillment_rate !== undefined && row.fulfillment_rate !== null ? Number(row.fulfillment_rate) : extra.fulfillmentRate,
+  };
+}
+
+export function toDbBudget2025Note(b: ProgramBudget2025Note): any {
+  return {
+    id: ensureUUID(b.id),
+    program_id: b.programId || 'praps_cpu',
+    note: b.note || '',
+    author: b.author || '',
+    date: b.date || new Date().toISOString(),
+    type: b.type || 'presupuesto',
+    budget_amount: Number(b.budgetAmount) || 0,
+    executed_amount: Number(b.executedAmount) || 0,
+    fulfillment_rate: Number(b.fulfillmentRate) || 0,
+    data: { ...b },
+  };
+}
+
+/* ==========================================================================
+   USER IDENTITY AND AUTH METHODS
+   ========================================================================== */
 
 export async function fetchUserByIdOrEmailFromSupabase(id?: string, email?: string): Promise<User | null> {
   if (!isSupabaseConfigured()) return null;
@@ -453,65 +914,26 @@ export async function upsertUserInSupabase(user: Partial<User> & { id?: string; 
     const resolvedId = authUid || user.id || 'user_' + Date.now();
     const resolvedEmail = (user.email || authEmail || '').toLowerCase().trim();
 
-    // Check if the record already exists in Supabase users to merge without losing existing fields
-    let existingDbUser: any = null;
-    try {
-      if (resolvedId) {
-        const { data: foundById } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', resolvedId)
-          .maybeSingle();
-        if (foundById) existingDbUser = foundById;
-      }
-      if (!existingDbUser && resolvedEmail) {
-        const { data: foundByEmail } = await supabase
-          .from('users')
-          .select('*')
-          .eq('email', resolvedEmail)
-          .maybeSingle();
-        if (foundByEmail) existingDbUser = foundByEmail;
-      }
-    } catch {
-      // ignore
-    }
-
-    const payload: any = {
+    const payload = toDbUser({
+      ...user,
       id: resolvedId,
-      name: user.name !== undefined ? user.name : (existingDbUser?.name || ''),
       email: resolvedEmail,
-      role: user.role !== undefined ? user.role : (existingDbUser?.role || 'referente'),
-      title: user.title !== undefined ? user.title : (existingDbUser?.title || 'Referente de Programas de Salud'),
-      comuna: user.comuna !== undefined ? user.comuna : (existingDbUser?.comuna || 'Quilicura (DISAM)'),
-      establishment: user.establishment !== undefined ? user.establishment : (existingDbUser?.establishment || 'Dirección de Salud / Comunal'),
-      health_service: user.healthService !== undefined ? user.healthService : (existingDbUser?.health_service || 'SSMN (Metropolitano Norte)'),
-      avatar: user.avatar !== undefined ? user.avatar : (existingDbUser?.avatar || (user.name ? user.name.charAt(0).toUpperCase() : 'U')),
-      photo_url: user.photoUrl !== undefined ? user.photoUrl : (existingDbUser?.photo_url || null),
-      phone: user.phone !== undefined ? user.phone : (existingDbUser?.phone || null),
-      phone_prefix: user.phonePrefix !== undefined ? user.phonePrefix : (existingDbUser?.phone_prefix || 'CL +56'),
-      instagram: user.instagram !== undefined ? user.instagram : (existingDbUser?.instagram || null),
-      country: user.country !== undefined ? user.country : (existingDbUser?.country || 'Chile'),
-      budget_year: user.budgetYear ? Number(user.budgetYear) : (existingDbUser?.budget_year || 2026),
-      updated_at: new Date().toISOString(),
-    };
+    });
 
     let { error } = await supabase
       .from('users')
       .upsert(payload, { onConflict: 'id' });
 
-    // Si hay correo resuelto, asegurar que se actualice la fila con ese correo
     if (resolvedEmail) {
       const byEmail = await supabase
         .from('users')
         .update(payload)
         .eq('email', resolvedEmail);
-      
       if (!byEmail.error) {
         error = null;
       }
     }
 
-    // Sincronizar también la metadata del usuario en Supabase Auth
     try {
       const authUpdates: any = {
         data: {
@@ -538,7 +960,7 @@ export async function upsertUserInSupabase(user: Partial<User> & { id?: string; 
 
       await supabase.auth.updateUser(authUpdates);
     } catch {
-      // Ignorar si no hay sesión activa
+      // Silencioso
     }
 
     if (error) {
@@ -546,106 +968,11 @@ export async function upsertUserInSupabase(user: Partial<User> & { id?: string; 
       return { success: false, error: error.message };
     }
 
-    console.log('Usuario guardado exitosamente en Supabase (users & auth):', payload.email || payload.name);
     return { success: true };
   } catch (err: any) {
     console.warn('upsertUserInSupabase exception:', err?.message);
     return { success: false, error: err?.message };
   }
-}
-
-// 10. Establishments
-export function fromDbEstablishment(row: any): Establishment {
-  return {
-    id: row.id,
-    name: row.name || '',
-    code: row.code || '',
-    type: row.type || 'CESFAM',
-    address: row.address || '',
-    director: row.director || '',
-    phone: row.phone || '',
-    email: row.email || '',
-  };
-}
-
-export function toDbEstablishment(e: Establishment): any {
-  return {
-    id: e.id,
-    name: e.name || '',
-    code: e.code || '',
-    type: e.type || 'CESFAM',
-    address: e.address || '',
-    director: e.director || '',
-    phone: e.phone || '',
-    email: e.email || '',
-    updated_at: new Date().toISOString(),
-  };
-}
-
-// 11. Financial Periods
-export function fromDbFinancialPeriod(row: any): FinancialPeriod {
-  return {
-    id: row.id,
-    programId: row.program_id,
-    month: row.month || '',
-    year: Number(row.year) || 2026,
-    periodName: row.period_name || '',
-    presupuestoAsignado: Number(row.presupuesto_asignado) || 0,
-    presupuestoEjecutado: Number(row.presupuesto_ejecutado) || 0,
-    presupuestoComprometido: Number(row.presupuesto_comprometido) || 0,
-    saldoDisponible: Number(row.saldo_disponible) || 0,
-    rendicionEnviada: Boolean(row.rendicion_enviada),
-    rendicionAprobada: Boolean(row.rendicion_aprobada),
-    fechaRendicion: row.fecha_rendicion || undefined,
-    observacionesRendicion: row.observaciones_rendicion || '',
-    createdAt: row.created_at || new Date().toISOString(),
-  };
-}
-
-export function toDbFinancialPeriod(f: FinancialPeriod): any {
-  return {
-    id: f.id,
-    program_id: f.programId || null,
-    month: f.month ? String(f.month) : '',
-    year: Number(f.year) || 2026,
-    period_name: f.periodName || '',
-    presupuesto_asignado: Number(f.presupuestoAsignado) || 0,
-    presupuesto_ejecutado: Number(f.presupuestoEjecutado) || 0,
-    presupuesto_comprometido: Number(f.presupuestoComprometido) || 0,
-    saldo_disponible: Number(f.saldoDisponible) || 0,
-    rendicion_enviada: Boolean(f.rendicionEnviada),
-    rendicion_aprobada: Boolean(f.rendicionAprobada),
-    fecha_rendicion: f.fechaRendicion || null,
-    observaciones_rendicion: f.observacionesRendicion || '',
-    updated_at: new Date().toISOString(),
-  };
-}
-
-// 12. Budget Components
-export function fromDbBudgetComponent(row: any): BudgetComponent {
-  return {
-    id: row.id,
-    programId: row.program_id,
-    name: row.name || '',
-    allocated: Number(row.allocated) || 0,
-    executed: Number(row.executed) || 0,
-    committed: Number(row.committed) || 0,
-    category: row.category || 'General',
-    createdAt: row.created_at || new Date().toISOString(),
-  };
-}
-
-export function toDbBudgetComponent(b: BudgetComponent): any {
-  return {
-    id: b.id,
-    program_id: b.programId || null,
-    name: b.name || '',
-    allocated: Number(b.allocated) || 0,
-    executed: Number(b.executed) || 0,
-    committed: Number(b.committed) || 0,
-    category: b.category || 'General',
-    updated_at: new Date().toISOString(),
-  };
 }
 
 /* ==========================================================================
@@ -730,7 +1057,7 @@ export async function fetchIndicatorsFromSupabase(): Promise<Indicator[]> {
     const { data, error } = await supabase
       .from('indicators')
       .select('*')
-      .order('code', { ascending: true });
+      .order('name', { ascending: true });
     if (error) {
       console.warn('Supabase indicators not reachable:', error.message);
       return [];
@@ -766,7 +1093,7 @@ export async function fetchQuestionsFromSupabase(): Promise<Question[]> {
     const { data, error } = await supabase
       .from('questions')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('date', { ascending: false });
     if (error) {
       console.warn('Supabase questions not reachable:', error.message);
       return [];
@@ -838,14 +1165,14 @@ export async function fetchFinancialPeriodsFromSupabase(): Promise<FinancialPeri
     const { data, error } = await supabase
       .from('financial_periods')
       .select('*')
-      .order('year', { ascending: false });
+      .order('period_name', { ascending: true });
     if (error) {
       console.warn('Supabase financial_periods not reachable:', error.message);
       return [];
     }
     return (data || []).map(fromDbFinancialPeriod);
   } catch (err: any) {
-    console.warn('Fetch financial periods failed safely:', err?.message);
+    console.warn('Fetch financial_periods failed safely:', err?.message);
     return [];
   }
 }
@@ -863,13 +1190,108 @@ export async function fetchBudgetComponentsFromSupabase(): Promise<BudgetCompone
     }
     return (data || []).map(fromDbBudgetComponent);
   } catch (err: any) {
-    console.warn('Fetch budget components failed safely:', err?.message);
+    console.warn('Fetch budget_components failed safely:', err?.message);
     return [];
   }
 }
 
+export async function fetchEmailsFromSupabase(): Promise<PendingEmail[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('emails')
+      .select('*')
+      .order('date', { ascending: false });
+    if (error) {
+      console.warn('Supabase emails not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbEmail);
+  } catch (err: any) {
+    console.warn('Fetch emails failed safely:', err?.message);
+    return [];
+  }
+}
+
+export async function fetchDocumentsFromSupabase(): Promise<DocumentRecord[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('documents')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.warn('Supabase documents not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbDocument);
+  } catch (err: any) {
+    console.warn('Fetch documents failed safely:', err?.message);
+    return [];
+  }
+}
+
+export async function fetchHRRecordsFromSupabase(): Promise<HRRecord[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('hr_records')
+      .select('*')
+      .order('name', { ascending: true });
+    if (error) {
+      console.warn('Supabase hr_records not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbHRRecord);
+  } catch (err: any) {
+    console.warn('Fetch hr_records failed safely:', err?.message);
+    return [];
+  }
+}
+
+export async function fetchKnowledgeFromSupabase(): Promise<KnowledgeItem[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('knowledge')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.warn('Supabase knowledge not reachable:', error.message);
+      return [];
+    }
+    return (data || []).map(fromDbKnowledge);
+  } catch (err: any) {
+    console.warn('Fetch knowledge failed safely:', err?.message);
+    return [];
+  }
+}
+
+export async function fetchBudget2025NotesFromSupabase(): Promise<Record<string, ProgramBudget2025Note>> {
+  if (!isSupabaseConfigured()) return {};
+  try {
+    const { data, error } = await supabase
+      .from('budget_2025_notes')
+      .select('*');
+    if (error) {
+      console.warn('Supabase budget_2025_notes not reachable:', error.message);
+      return {};
+    }
+    const result: Record<string, ProgramBudget2025Note> = {};
+    (data || []).forEach((row: any) => {
+      const note = fromDbBudget2025Note(row);
+      const key = note.programId || note.id || 'general';
+      result[key] = note;
+    });
+    return result;
+  } catch (err: any) {
+    console.warn('Fetch budget_2025_notes failed safely:', err?.message);
+    return {};
+  }
+}
+
 /* ==========================================================================
-   DATABASE WRITE / MUTATION OPERATIONS
+   DATABASE WRITE OPERATIONS (UPSERT & DELETE)
    ========================================================================== */
 
 export async function upsertTaskInSupabase(task: Task): Promise<Task> {
@@ -897,9 +1319,7 @@ export async function deleteTaskFromSupabase(id: string): Promise<void> {
   if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('tasks').delete().eq('id', id);
-    if (error) {
-      console.warn('Error deleting task from Supabase:', error.message);
-    }
+    if (error) console.warn('Error deleting task from Supabase:', error.message);
   } catch (err: any) {
     console.warn('Task delete skipped safely:', err?.message);
   }
@@ -930,9 +1350,7 @@ export async function deletePurchaseFromSupabase(id: string): Promise<void> {
   if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('purchases').delete().eq('id', id);
-    if (error) {
-      console.warn('Error deleting purchase from Supabase:', error.message);
-    }
+    if (error) console.warn('Error deleting purchase from Supabase:', error.message);
   } catch (err: any) {
     console.warn('Purchase delete skipped safely:', err?.message);
   }
@@ -963,9 +1381,7 @@ export async function deleteMeetingFromSupabase(id: string): Promise<void> {
   if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('meetings').delete().eq('id', id);
-    if (error) {
-      console.warn('Error deleting meeting from Supabase:', error.message);
-    }
+    if (error) console.warn('Error deleting meeting from Supabase:', error.message);
   } catch (err: any) {
     console.warn('Meeting delete skipped safely:', err?.message);
   }
@@ -982,6 +1398,20 @@ export async function upsertIndicatorInSupabase(indicator: Indicator): Promise<I
       .single();
 
     if (error) {
+      // Reintento con payload mínimo seguro si la tabla aún no cuenta con las nuevas columnas
+      if (error.message?.includes('column') || error.code === '42703') {
+        const fallbackPayload = toMinimalDbIndicator(indicator);
+        const { data: retryData, error: retryError } = await supabase
+          .from('indicators')
+          .upsert(fallbackPayload, { onConflict: 'id' })
+          .select()
+          .single();
+        if (retryError) {
+          console.warn('Fallback indicator upsert error:', retryError.message);
+          return indicator;
+        }
+        return fromDbIndicator(retryData);
+      }
       console.warn('Error upserting indicator in Supabase:', error.message);
       return indicator;
     }
@@ -996,9 +1426,7 @@ export async function deleteIndicatorFromSupabase(id: string): Promise<void> {
   if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('indicators').delete().eq('id', id);
-    if (error) {
-      console.warn('Error deleting indicator from Supabase:', error.message);
-    }
+    if (error) console.warn('Error deleting indicator from Supabase:', error.message);
   } catch (err: any) {
     console.warn('Indicator delete skipped safely:', err?.message);
   }
@@ -1029,9 +1457,7 @@ export async function deleteContactFromSupabase(id: string): Promise<void> {
   if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('contacts').delete().eq('id', id);
-    if (error) {
-      console.warn('Error deleting contact from Supabase:', error.message);
-    }
+    if (error) console.warn('Error deleting contact from Supabase:', error.message);
   } catch (err: any) {
     console.warn('Contact delete skipped safely:', err?.message);
   }
@@ -1062,9 +1488,7 @@ export async function deleteQuestionFromSupabase(id: string): Promise<void> {
   if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('questions').delete().eq('id', id);
-    if (error) {
-      console.warn('Error deleting question from Supabase:', error.message);
-    }
+    if (error) console.warn('Error deleting question from Supabase:', error.message);
   } catch (err: any) {
     console.warn('Question delete skipped safely:', err?.message);
   }
@@ -1095,9 +1519,7 @@ export async function deleteAlertFromSupabase(id: string): Promise<void> {
   if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('alerts').delete().eq('id', id);
-    if (error) {
-      console.warn('Error deleting alert from Supabase:', error.message);
-    }
+    if (error) console.warn('Error deleting alert from Supabase:', error.message);
   } catch (err: any) {
     console.warn('Alert delete skipped safely:', err?.message);
   }
@@ -1128,9 +1550,7 @@ export async function deleteProgramFromSupabase(id: string): Promise<void> {
   if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('health_programs').delete().eq('id', id);
-    if (error) {
-      console.warn('Error deleting program from Supabase:', error.message);
-    }
+    if (error) console.warn('Error deleting program from Supabase:', error.message);
   } catch (err: any) {
     console.warn('Program delete skipped safely:', err?.message);
   }
@@ -1158,12 +1578,10 @@ export async function upsertEstablishmentInSupabase(establishment: Establishment
 }
 
 export async function deleteEstablishmentFromSupabase(id: string): Promise<void> {
-  if (!isSupabaseConfigured()) return;
+  if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('establishments').delete().eq('id', id);
-    if (error) {
-      console.warn('Error deleting establishment from Supabase:', error.message);
-    }
+    if (error) console.warn('Error deleting establishment from Supabase:', error.message);
   } catch (err: any) {
     console.warn('Establishment delete skipped safely:', err?.message);
   }
@@ -1191,12 +1609,10 @@ export async function upsertFinancialPeriodInSupabase(period: FinancialPeriod): 
 }
 
 export async function deleteFinancialPeriodFromSupabase(id: string): Promise<void> {
-  if (!isSupabaseConfigured()) return;
+  if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('financial_periods').delete().eq('id', id);
-    if (error) {
-      console.warn('Error deleting financial period from Supabase:', error.message);
-    }
+    if (error) console.warn('Error deleting financial period from Supabase:', error.message);
   } catch (err: any) {
     console.warn('Financial period delete skipped safely:', err?.message);
   }
@@ -1224,14 +1640,172 @@ export async function upsertBudgetComponentInSupabase(component: BudgetComponent
 }
 
 export async function deleteBudgetComponentFromSupabase(id: string): Promise<void> {
-  if (!isSupabaseConfigured()) return;
+  if (!isSupabaseConfigured() || !id) return;
   try {
     const { error } = await supabase.from('budget_components').delete().eq('id', id);
-    if (error) {
-      console.warn('Error deleting budget component from Supabase:', error.message);
-    }
+    if (error) console.warn('Error deleting budget component from Supabase:', error.message);
   } catch (err: any) {
     console.warn('Budget component delete skipped safely:', err?.message);
+  }
+}
+
+// 13. CRUD Emails (Correos)
+export async function upsertEmailInSupabase(email: PendingEmail): Promise<PendingEmail> {
+  if (!isSupabaseConfigured()) return email;
+  try {
+    const payload = toDbEmail(email);
+    const { data, error } = await supabase
+      .from('emails')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('Error upserting email in Supabase:', error.message);
+      return email;
+    }
+    return fromDbEmail(data);
+  } catch (err: any) {
+    console.warn('Email upsert skipped safely:', err?.message);
+    return email;
+  }
+}
+
+export async function deleteEmailFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured() || !id) return;
+  try {
+    const { error } = await supabase.from('emails').delete().eq('id', id);
+    if (error) console.warn('Error deleting email from Supabase:', error.message);
+  } catch (err: any) {
+    console.warn('Email delete skipped safely:', err?.message);
+  }
+}
+
+// 14. CRUD Documents (Documentos)
+export async function upsertDocumentInSupabase(document: DocumentRecord): Promise<DocumentRecord> {
+  if (!isSupabaseConfigured()) return document;
+  try {
+    const payload = toDbDocument(document);
+    const { data, error } = await supabase
+      .from('documents')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('Error upserting document in Supabase:', error.message);
+      return document;
+    }
+    return fromDbDocument(data);
+  } catch (err: any) {
+    console.warn('Document upsert skipped safely:', err?.message);
+    return document;
+  }
+}
+
+export async function deleteDocumentFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured() || !id) return;
+  try {
+    const { error } = await supabase.from('documents').delete().eq('id', id);
+    if (error) console.warn('Error deleting document from Supabase:', error.message);
+  } catch (err: any) {
+    console.warn('Document delete skipped safely:', err?.message);
+  }
+}
+
+// 15. CRUD HR Records (RRHH)
+export async function upsertHRRecordInSupabase(hrRecord: HRRecord): Promise<HRRecord> {
+  if (!isSupabaseConfigured()) return hrRecord;
+  try {
+    const payload = toDbHRRecord(hrRecord);
+    const { data, error } = await supabase
+      .from('hr_records')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('Error upserting hr_record in Supabase:', error.message);
+      return hrRecord;
+    }
+    return fromDbHRRecord(data);
+  } catch (err: any) {
+    console.warn('HRRecord upsert skipped safely:', err?.message);
+    return hrRecord;
+  }
+}
+
+export async function deleteHRRecordFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured() || !id) return;
+  try {
+    const { error } = await supabase.from('hr_records').delete().eq('id', id);
+    if (error) console.warn('Error deleting hr_record from Supabase:', error.message);
+  } catch (err: any) {
+    console.warn('HRRecord delete skipped safely:', err?.message);
+  }
+}
+
+// 16. CRUD Knowledge (Base de Conocimiento)
+export async function upsertKnowledgeInSupabase(item: KnowledgeItem): Promise<KnowledgeItem> {
+  if (!isSupabaseConfigured()) return item;
+  try {
+    const payload = toDbKnowledge(item);
+    const { data, error } = await supabase
+      .from('knowledge')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('Error upserting knowledge in Supabase:', error.message);
+      return item;
+    }
+    return fromDbKnowledge(data);
+  } catch (err: any) {
+    console.warn('Knowledge upsert skipped safely:', err?.message);
+    return item;
+  }
+}
+
+export async function deleteKnowledgeFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured() || !id) return;
+  try {
+    const { error } = await supabase.from('knowledge').delete().eq('id', id);
+    if (error) console.warn('Error deleting knowledge from Supabase:', error.message);
+  } catch (err: any) {
+    console.warn('Knowledge delete skipped safely:', err?.message);
+  }
+}
+
+// 17. CRUD Budget 2025 Notes (Notas Presupuesto)
+export async function upsertBudget2025NoteInSupabase(note: ProgramBudget2025Note): Promise<ProgramBudget2025Note> {
+  if (!isSupabaseConfigured()) return note;
+  try {
+    const payload = toDbBudget2025Note(note);
+    const { data, error } = await supabase
+      .from('budget_2025_notes')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('Error upserting budget_2025_note in Supabase:', error.message);
+      return note;
+    }
+    return fromDbBudget2025Note(data);
+  } catch (err: any) {
+    console.warn('Budget2025Note upsert skipped safely:', err?.message);
+    return note;
+  }
+}
+
+export async function deleteBudget2025NoteFromSupabase(id: string): Promise<void> {
+  if (!isSupabaseConfigured() || !id) return;
+  try {
+    const { error } = await supabase.from('budget_2025_notes').delete().eq('id', id);
+    if (error) console.warn('Error deleting budget_2025_note from Supabase:', error.message);
+  } catch (err: any) {
+    console.warn('Budget2025Note delete skipped safely:', err?.message);
   }
 }
 
@@ -1278,6 +1852,11 @@ export async function checkSupabaseDatabaseStatus(): Promise<SupabaseDbStatus> {
     'establishments',
     'financial_periods',
     'budget_components',
+    'budget_2025_notes',
+    'emails',
+    'documents',
+    'hr_records',
+    'knowledge',
   ];
 
   const tableResults: Record<string, { count: number; ok: boolean; error?: string }> = {};
@@ -1339,6 +1918,11 @@ export async function pullAllFromSupabase(): Promise<{
   establishments: Establishment[];
   financialPeriods: FinancialPeriod[];
   budgetComponents: BudgetComponent[];
+  emails: PendingEmail[];
+  documents: DocumentRecord[];
+  hrRecords: HRRecord[];
+  knowledge: KnowledgeItem[];
+  budget2025Notes: Record<string, ProgramBudget2025Note>;
 }> {
   if (!isSupabaseConfigured()) {
     return {
@@ -1354,6 +1938,11 @@ export async function pullAllFromSupabase(): Promise<{
       establishments: [],
       financialPeriods: [],
       budgetComponents: [],
+      emails: [],
+      documents: [],
+      hrRecords: [],
+      knowledge: [],
+      budget2025Notes: {},
     };
   }
 
@@ -1370,6 +1959,11 @@ export async function pullAllFromSupabase(): Promise<{
     establishments,
     financialPeriods,
     budgetComponents,
+    emails,
+    documents,
+    hrRecords,
+    knowledge,
+    budget2025Notes,
   ] = await Promise.all([
     fetchHealthProgramsFromSupabase().catch(() => []),
     fetchTasksFromSupabase().catch(() => []),
@@ -1383,6 +1977,11 @@ export async function pullAllFromSupabase(): Promise<{
     fetchEstablishmentsFromSupabase().catch(() => []),
     fetchFinancialPeriodsFromSupabase().catch(() => []),
     fetchBudgetComponentsFromSupabase().catch(() => []),
+    fetchEmailsFromSupabase().catch(() => []),
+    fetchDocumentsFromSupabase().catch(() => []),
+    fetchHRRecordsFromSupabase().catch(() => []),
+    fetchKnowledgeFromSupabase().catch(() => []),
+    fetchBudget2025NotesFromSupabase().catch(() => ({})),
   ]);
 
   return {
@@ -1398,6 +1997,11 @@ export async function pullAllFromSupabase(): Promise<{
     establishments,
     financialPeriods,
     budgetComponents,
+    emails,
+    documents,
+    hrRecords,
+    knowledge,
+    budget2025Notes,
   };
 }
 
@@ -1417,6 +2021,11 @@ export async function pushAllToSupabase(data: {
   establishments?: Establishment[];
   financialPeriods?: FinancialPeriod[];
   budgetComponents?: BudgetComponent[];
+  emails?: PendingEmail[];
+  documents?: DocumentRecord[];
+  hrRecords?: HRRecord[];
+  knowledge?: KnowledgeItem[];
+  budget2025Notes?: Record<string, ProgramBudget2025Note>;
 }): Promise<{ success: boolean; errors: string[]; insertedCount: number }> {
   if (!isSupabaseConfigured()) {
     return {
@@ -1535,6 +2144,61 @@ export async function pushAllToSupabase(data: {
         insertedCount++;
       } catch (err: any) {
         errors.push(`Error al subir componente presupuestario ${b.name}: ${err?.message}`);
+      }
+    }
+  }
+
+  if (data.emails && data.emails.length > 0) {
+    for (const em of data.emails) {
+      try {
+        await upsertEmailInSupabase(em);
+        insertedCount++;
+      } catch (err: any) {
+        errors.push(`Error al subir correo ${em.subject}: ${err?.message}`);
+      }
+    }
+  }
+
+  if (data.documents && data.documents.length > 0) {
+    for (const doc of data.documents) {
+      try {
+        await upsertDocumentInSupabase(doc);
+        insertedCount++;
+      } catch (err: any) {
+        errors.push(`Error al subir documento ${doc.title}: ${err?.message}`);
+      }
+    }
+  }
+
+  if (data.hrRecords && data.hrRecords.length > 0) {
+    for (const hr of data.hrRecords) {
+      try {
+        await upsertHRRecordInSupabase(hr);
+        insertedCount++;
+      } catch (err: any) {
+        errors.push(`Error al subir registro RRHH ${hr.name}: ${err?.message}`);
+      }
+    }
+  }
+
+  if (data.knowledge && data.knowledge.length > 0) {
+    for (const k of data.knowledge) {
+      try {
+        await upsertKnowledgeInSupabase(k);
+        insertedCount++;
+      } catch (err: any) {
+        errors.push(`Error al subir conocimiento ${k.title}: ${err?.message}`);
+      }
+    }
+  }
+
+  if (data.budget2025Notes && Object.keys(data.budget2025Notes).length > 0) {
+    for (const note of Object.values(data.budget2025Notes)) {
+      try {
+        await upsertBudget2025NoteInSupabase(note);
+        insertedCount++;
+      } catch (err: any) {
+        errors.push(`Error al subir nota presupuestaria ${note.id}: ${err?.message}`);
       }
     }
   }
