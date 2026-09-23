@@ -52,6 +52,15 @@ CREATE TABLE IF NOT EXISTS public.users (
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- Asegurar columnas si la tabla ya existía previamente
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone_prefix TEXT DEFAULT 'CL +56';
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS instagram TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Chile';
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS photo_url TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS budget_year INTEGER DEFAULT 2026;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
 -- Tabla: health_programs (Programas de salud comunal)
 CREATE TABLE IF NOT EXISTS public.health_programs (
   id TEXT PRIMARY KEY,
@@ -570,5 +579,75 @@ ON CONFLICT (id) DO UPDATE SET
   phone_prefix = COALESCE(EXCLUDED.phone_prefix, public.users.phone_prefix),
   instagram = COALESCE(EXCLUDED.instagram, public.users.instagram),
   country = COALESCE(EXCLUDED.country, public.users.country),
-  data = COALESCE(public.users.data, '{}'::jsonb) || EXCLUDED.data;
+  data = COALESCE(public.users.data, '{}'::jsonb) || EXCLUDED.data,
+  updated_at = NOW();
+
+-- Actualizar todos los registros existentes para este correo en public.users
+UPDATE public.users
+SET 
+  name = 'Klaus Bauer',
+  phone = '1234567890',
+  phone_prefix = 'CL +56',
+  instagram = 'tuusuario',
+  country = 'Chile',
+  data = COALESCE(data, '{}'::jsonb) || jsonb_build_object(
+    'name', 'Klaus Bauer',
+    'email', 'kbauergrandon@gmail.com',
+    'phone', '1234567890',
+    'phonePrefix', 'CL +56',
+    'instagram', 'tuusuario',
+    'country', 'Chile'
+  ),
+  updated_at = NOW()
+WHERE email ILIKE 'kbauergrandon@gmail.com' OR email ILIKE 'klausbauer10x@gmail.com';
+
+-- Sincronizar metadata en auth.users y vincular UUID si existe cuenta de autenticación
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users') THEN
+    UPDATE auth.users
+    SET raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object(
+      'full_name', 'Klaus Bauer',
+      'name', 'Klaus Bauer',
+      'phone', '1234567890',
+      'phone_prefix', 'CL +56',
+      'phonePrefix', 'CL +56',
+      'instagram', 'tuusuario',
+      'country', 'Chile'
+    )
+    WHERE email ILIKE 'kbauergrandon@gmail.com';
+
+    -- Si el usuario ya existe en auth.users, insertar o actualizar también su fila en public.users con su UID de autenticación
+    INSERT INTO public.users (
+      id, name, email, role, title, comuna, establishment, health_service,
+      avatar, phone, phone_prefix, instagram, country, budget_year, data
+    )
+    SELECT 
+      id::text,
+      'Klaus Bauer',
+      email,
+      'referente',
+      'Referente de Programas de Salud',
+      'Quilicura (DISAM)',
+      'Dirección de Salud / Comunal',
+      'Servicio de Salud Metropolitano Norte',
+      'KB',
+      '1234567890',
+      'CL +56',
+      'tuusuario',
+      'Chile',
+      2026,
+      '{"name": "Klaus Bauer", "email": "kbauergrandon@gmail.com", "phone": "1234567890", "phonePrefix": "CL +56", "instagram": "tuusuario", "country": "Chile"}'::jsonb
+    FROM auth.users
+    WHERE email ILIKE 'kbauergrandon@gmail.com'
+    ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name,
+      phone = EXCLUDED.phone,
+      phone_prefix = EXCLUDED.phone_prefix,
+      instagram = EXCLUDED.instagram,
+      country = EXCLUDED.country,
+      data = COALESCE(public.users.data, '{}'::jsonb) || EXCLUDED.data,
+      updated_at = NOW();
+  END IF;
+END $$;
 

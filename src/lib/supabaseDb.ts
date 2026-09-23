@@ -871,27 +871,42 @@ export function toDbBudget2025Note(b: ProgramBudget2025Note): any {
 export async function fetchUserByIdOrEmailFromSupabase(id?: string, email?: string): Promise<User | null> {
   if (!isSupabaseConfigured()) return null;
   try {
+    const cleanEmail = (email || '').toLowerCase().trim();
+    const rows: any[] = [];
+
     if (id) {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-      if (!error && data) {
-        return fromDbUser(data);
+      const { data } = await supabase.from('users').select('*').eq('id', id);
+      if (data && data.length > 0) rows.push(...data);
+    }
+    if (cleanEmail) {
+      const { data } = await supabase.from('users').select('*').eq('email', cleanEmail);
+      if (data && data.length > 0) {
+        data.forEach((r) => {
+          if (!rows.some((existing) => existing.id === r.id)) {
+            rows.push(r);
+          }
+        });
       }
     }
-    if (email) {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email.toLowerCase().trim())
-        .maybeSingle();
-      if (!error && data) {
-        return fromDbUser(data);
-      }
+
+    if (rows.length === 0) return null;
+
+    // Merge rows so that any non-empty field (phone, instagram, photo, etc.) is preserved
+    let mergedUser = fromDbUser(rows[0]);
+    for (let i = 1; i < rows.length; i++) {
+      const u = fromDbUser(rows[i]);
+      mergedUser = {
+        ...mergedUser,
+        phone: mergedUser.phone || u.phone,
+        phonePrefix: mergedUser.phonePrefix || u.phonePrefix,
+        instagram: mergedUser.instagram || u.instagram,
+        country: mergedUser.country || u.country,
+        photoUrl: mergedUser.photoUrl || u.photoUrl,
+        avatar: mergedUser.avatar || u.avatar,
+        name: mergedUser.name || u.name,
+      };
     }
-    return null;
+    return mergedUser;
   } catch (err: any) {
     console.warn('fetchUserByIdOrEmailFromSupabase error:', err?.message);
     return null;
@@ -936,6 +951,8 @@ export async function upsertUserInSupabase(user: Partial<User> & { id?: string; 
       email: resolvedEmail,
     });
 
+    const { id: _ignoreId, ...fieldsToUpdate } = payload;
+
     let { error } = await supabase
       .from('users')
       .upsert(payload, { onConflict: 'id' });
@@ -972,14 +989,37 @@ export async function upsertUserInSupabase(user: Partial<User> & { id?: string; 
       }
     }
 
-    if (resolvedEmail && !error) {
-      const byEmail = await supabase
+    // Update ALL rows matching email without overwriting their primary key ID
+    if (resolvedEmail) {
+      await supabase
         .from('users')
-        .update(payload)
+        .update(fieldsToUpdate)
         .eq('email', resolvedEmail);
-      if (!byEmail.error) {
-        error = null;
-      }
+
+      // If column error might have happened on email update, update data JSONB
+      await supabase
+        .from('users')
+        .update({
+          name: payload.name,
+          data: {
+            ...payload.data,
+            phone: payload.phone,
+            phonePrefix: payload.phone_prefix,
+            instagram: payload.instagram,
+            country: payload.country,
+            photoUrl: payload.photo_url,
+            avatar: payload.avatar,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('email', resolvedEmail);
+    }
+
+    if (authUid && authUid !== finalId) {
+      await supabase
+        .from('users')
+        .update(fieldsToUpdate)
+        .eq('id', authUid);
     }
 
     try {
@@ -991,12 +1031,15 @@ export async function upsertUserInSupabase(user: Partial<User> & { id?: string; 
           title: payload.title,
           phone: payload.phone,
           phone_prefix: payload.phone_prefix,
+          phonePrefix: payload.phone_prefix,
           comuna: payload.comuna,
           establishment: payload.establishment,
           health_service: payload.health_service,
+          healthService: payload.health_service,
           instagram: payload.instagram,
           country: payload.country,
           budget_year: payload.budget_year,
+          budgetYear: payload.budget_year,
           photo_url: payload.photo_url,
           avatar: payload.avatar,
         },

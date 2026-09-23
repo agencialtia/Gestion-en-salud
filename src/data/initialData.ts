@@ -25,15 +25,15 @@ import {
 
 export const CURRENT_USER: User = {
   id: 'usr_klaus_bauer',
-  name: 'Klaus',
-  email: 'klausbauer10x@gmail.com',
+  name: 'Klaus Bauer',
+  email: 'kbauergrandon@gmail.com',
   role: 'referente',
   title: 'Referente Comunal de Programas de Salud',
   comuna: 'Quilicura (DISAM)',
   establishment: 'Dirección de Salud / Comunal',
   healthService: 'SSMN (Metropolitano Norte)',
   budgetYear: '2026',
-  avatar: 'K',
+  avatar: 'KB',
   phonePrefix: 'CL +56',
   phone: '1234567890',
   instagram: 'tuusuario',
