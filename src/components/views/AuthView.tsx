@@ -805,6 +805,23 @@ export const AuthView: React.FC = () => {
                   Por favor revisa tu casilla de correo electrónico y haz clic en el enlace recibido para activar tu cuenta.
                 </p>
 
+                {/* Consejo sobre Spam y Supabase */}
+                <div className="mt-4 p-3.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-left text-xs text-amber-800 dark:text-amber-200 space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-100">
+                    <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                    <span>¿No te llega el correo?</span>
+                  </div>
+                  <ul className="list-disc pl-4 space-y-1 text-[11px] text-amber-800/90 dark:text-amber-200/90">
+                    <li>Revisa tu carpeta de <strong>Spam o Correo no deseado</strong>.</li>
+                    <li>
+                      En proyectos gratuitos de Supabase, los correos pueden tardar o tener límite horario.
+                    </li>
+                    <li>
+                      <strong>Acceso inmediato:</strong> En tu panel de Supabase ve a <em>Authentication → Providers → Email</em> y desactiva <strong>"Confirm email"</strong> para iniciar sesión al instante.
+                    </li>
+                  </ul>
+                </div>
+
                 {verifyError && (
                   <div className="mt-3 p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 text-rose-700 dark:text-rose-300 text-xs flex items-center justify-center gap-2">
                     <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600" />
