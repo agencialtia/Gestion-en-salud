@@ -907,11 +907,11 @@ export async function fetchUserByIdOrEmailFromSupabase(id?: string, email?: stri
     const rows: any[] = [];
 
     if (id) {
-      const { data } = await supabase.from('users').select('*').eq('id', id);
+      const { data } = await supabase.from('users').select('*').eq('id', id).order('updated_at', { ascending: false });
       if (data && data.length > 0) rows.push(...data);
     }
     if (cleanEmail) {
-      const { data } = await supabase.from('users').select('*').eq('email', cleanEmail);
+      const { data } = await supabase.from('users').select('*').eq('email', cleanEmail).order('updated_at', { ascending: false });
       if (data && data.length > 0) {
         data.forEach((r) => {
           if (!rows.some((existing) => existing.id === r.id)) {
@@ -923,22 +923,9 @@ export async function fetchUserByIdOrEmailFromSupabase(id?: string, email?: stri
 
     if (rows.length === 0) return null;
 
-    // Merge rows so that any non-empty field (phone, instagram, photo, etc.) is preserved
-    let mergedUser = fromDbUser(rows[0]);
-    for (let i = 1; i < rows.length; i++) {
-      const u = fromDbUser(rows[i]);
-      mergedUser = {
-        ...mergedUser,
-        phone: mergedUser.phone || u.phone,
-        phonePrefix: mergedUser.phonePrefix || u.phonePrefix,
-        instagram: mergedUser.instagram || u.instagram,
-        country: mergedUser.country || u.country,
-        photoUrl: mergedUser.photoUrl || u.photoUrl,
-        avatar: mergedUser.avatar || u.avatar,
-        name: mergedUser.name || u.name,
-      };
-    }
-    return mergedUser;
+    // Prioritize the row matching the exact auth ID; otherwise use the most recently updated row
+    const prioritizedRow = (id ? rows.find((r) => r.id === id) : null) || rows[0];
+    return fromDbUser(prioritizedRow);
   } catch (err: any) {
     console.warn('fetchUserByIdOrEmailFromSupabase error:', err?.message);
     return null;
@@ -1045,6 +1032,15 @@ export async function upsertUserInSupabase(user: Partial<User> & { id?: string; 
           updated_at: new Date().toISOString(),
         })
         .eq('email', resolvedEmail);
+
+      // If authUid exists, clean up any legacy seed records (e.g. 'usr_klaus_bauer') to prevent duplicate conflicting rows
+      if (authUid) {
+        await supabase
+          .from('users')
+          .delete()
+          .eq('email', resolvedEmail)
+          .neq('id', authUid);
+      }
     }
 
     if (authUid && authUid !== finalId) {
@@ -1252,7 +1248,7 @@ export async function fetchUsersFromSupabase(): Promise<User[]> {
     const { data, error } = await supabase
       .from('users')
       .select('*')
-      .order('name', { ascending: true });
+      .order('updated_at', { ascending: false });
     if (error) {
       console.warn('Supabase users not reachable:', error.message);
       return [];

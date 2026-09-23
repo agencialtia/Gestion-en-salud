@@ -831,9 +831,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               healthService: dbUser?.healthService || userMeta.healthService || cachedProfile?.healthService || 'SSMN (Metropolitano Norte)',
               avatar,
               photoUrl: dbUser?.photoUrl || userMeta.photo_url || cachedProfile?.photoUrl,
-              phone: dbUser?.phone || userMeta.phone || cachedProfile?.phone || '1234567890',
+              phone: dbUser?.phone || userMeta.phone || cachedProfile?.phone || '',
               phonePrefix: dbUser?.phonePrefix || userMeta.phone_prefix || userMeta.phonePrefix || cachedProfile?.phonePrefix || 'CL +56',
-              instagram: dbUser?.instagram || userMeta.instagram || cachedProfile?.instagram || 'tuusuario',
+              instagram: dbUser?.instagram || userMeta.instagram || cachedProfile?.instagram || '',
               country: dbUser?.country || userMeta.country || cachedProfile?.country || 'Chile',
               budgetYear: dbUser?.budgetYear || userMeta.budget_year || cachedProfile?.budgetYear || '2026',
               authProvider: (user.app_metadata?.provider as any) || 'email',
@@ -881,9 +881,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               healthService: dbUser?.healthService || userMeta.healthService || cachedProfile?.healthService || 'SSMN (Metropolitano Norte)',
               avatar,
               photoUrl: dbUser?.photoUrl || userMeta.photo_url || cachedProfile?.photoUrl,
-              phone: dbUser?.phone || userMeta.phone || cachedProfile?.phone || '1234567890',
+              phone: dbUser?.phone || userMeta.phone || cachedProfile?.phone || '',
               phonePrefix: dbUser?.phonePrefix || userMeta.phone_prefix || userMeta.phonePrefix || cachedProfile?.phonePrefix || 'CL +56',
-              instagram: dbUser?.instagram || userMeta.instagram || cachedProfile?.instagram || 'tuusuario',
+              instagram: dbUser?.instagram || userMeta.instagram || cachedProfile?.instagram || '',
               country: dbUser?.country || userMeta.country || cachedProfile?.country || 'Chile',
               budgetYear: dbUser?.budgetYear || userMeta.budget_year || cachedProfile?.budgetYear || '2026',
               authProvider: (user.app_metadata?.provider as any) || 'email',
@@ -893,7 +893,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             saveUserProfileLocally(loggedUser);
             setCurrentUser(loggedUser);
             setIsAuthenticated(true);
-            if (!dbUser || !dbUser.phone || !dbUser.instagram) {
+            if (!dbUser) {
               upsertUserInSupabase(loggedUser).catch((err) => console.warn('Sync user on SIGNED_IN error:', err));
             }
             try {
@@ -1053,9 +1053,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             healthService: dbUser?.healthService || userMeta.healthService || cachedProfile?.healthService || 'SSMN (Metropolitano Norte)',
             avatar,
             photoUrl: dbUser?.photoUrl || userMeta.photo_url || cachedProfile?.photoUrl,
-            phone: dbUser?.phone || userMeta.phone || cachedProfile?.phone || '1234567890',
+            phone: dbUser?.phone || userMeta.phone || cachedProfile?.phone || '',
             phonePrefix: dbUser?.phonePrefix || userMeta.phone_prefix || userMeta.phonePrefix || cachedProfile?.phonePrefix || 'CL +56',
-            instagram: dbUser?.instagram || userMeta.instagram || cachedProfile?.instagram || 'tuusuario',
+            instagram: dbUser?.instagram || userMeta.instagram || cachedProfile?.instagram || '',
             country: dbUser?.country || userMeta.country || cachedProfile?.country || 'Chile',
             budgetYear: dbUser?.budgetYear || userMeta.budget_year || cachedProfile?.budgetYear || '2026',
             authProvider: 'email',
@@ -1064,7 +1064,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
           saveUserProfileLocally(userToSet);
 
-          if (!dbUser || !dbUser.phone || !dbUser.instagram) {
+          if (!dbUser) {
             upsertUserInSupabase(userToSet).catch((err) => console.warn('Sync user error on login:', err));
           }
 
@@ -2750,10 +2750,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (data.users && data.users.length > 0) {
             setCurrentUser((prev) => {
               const prevEmail = (prev.email || '').toLowerCase().trim();
-              const matched = data.users.find((u) => 
-                (prev.id && u.id === prev.id) ||
-                (prevEmail && u.email && u.email.toLowerCase().trim() === prevEmail)
-              ) || (data.users.length === 1 ? data.users[0] : undefined);
+              const matched = 
+                (prev.id ? data.users.find((u) => u.id === prev.id) : null) ||
+                (prevEmail ? data.users.find((u) => u.email && u.email.toLowerCase().trim() === prevEmail) : null);
 
               if (matched) {
                 const merged: User = {
@@ -2761,9 +2760,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                   ...matched,
                   name: matched.name || prev.name,
                   email: matched.email || prev.email,
-                  phone: matched.phone || prev.phone,
+                  phone: matched.phone !== undefined ? matched.phone : prev.phone,
                   phonePrefix: matched.phonePrefix || prev.phonePrefix,
-                  instagram: matched.instagram || prev.instagram,
+                  instagram: matched.instagram !== undefined ? matched.instagram : prev.instagram,
                   country: matched.country || prev.country,
                   photoUrl: matched.photoUrl || prev.photoUrl,
                   avatar: matched.avatar || prev.avatar,

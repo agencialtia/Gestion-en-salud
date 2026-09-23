@@ -35,8 +35,8 @@ export const CURRENT_USER: User = {
   budgetYear: '2026',
   avatar: 'KB',
   phonePrefix: 'CL +56',
-  phone: '1234567890',
-  instagram: 'tuusuario',
+  phone: '',
+  instagram: '',
   country: 'Chile',
 };
 

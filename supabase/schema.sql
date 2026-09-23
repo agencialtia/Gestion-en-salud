@@ -100,7 +100,10 @@ CREATE TABLE IF NOT EXISTS public.establishments (
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: tasks (Planificación operativa y tareas)
+ALTER TABLE public.establishments ADD COLUMN IF NOT EXISTS commune TEXT DEFAULT 'Quilicura';
+ALTER TABLE public.establishments ADD COLUMN IF NOT EXISTS comuna TEXT DEFAULT 'Quilicura';
+ALTER TABLE public.establishments ADD COLUMN IF NOT EXISTS short_name TEXT;
+ALTER TABLE public.establishments ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
 CREATE TABLE IF NOT EXISTS public.tasks (
   id TEXT PRIMARY KEY,
   program_id TEXT,
@@ -477,9 +480,9 @@ BEGIN
     COALESCE(NEW.raw_user_meta_data->>'establishment', 'Dirección de Salud / Comunal'),
     COALESCE(NEW.raw_user_meta_data->>'healthService', 'Servicio de Salud Metropolitano Norte'),
     UPPER(SUBSTRING(COALESCE(NEW.raw_user_meta_data->>'name', NEW.email) FROM 1 FOR 1)),
-    COALESCE(NEW.raw_user_meta_data->>'phone', '1234567890'),
+    COALESCE(NEW.raw_user_meta_data->>'phone', ''),
     COALESCE(NEW.raw_user_meta_data->>'phonePrefix', 'CL +56'),
-    COALESCE(NEW.raw_user_meta_data->>'instagram', 'tuusuario'),
+    COALESCE(NEW.raw_user_meta_data->>'instagram', ''),
     COALESCE(NEW.raw_user_meta_data->>'country', 'Chile'),
     COALESCE((NEW.raw_user_meta_data->>'budgetYear')::integer, 2026)
   )
@@ -490,6 +493,10 @@ BEGIN
     title = COALESCE(public.users.title, EXCLUDED.title),
     health_service = COALESCE(public.users.health_service, EXCLUDED.health_service),
     budget_year = COALESCE(public.users.budget_year, EXCLUDED.budget_year),
+    phone = CASE WHEN EXCLUDED.phone IS NOT NULL AND EXCLUDED.phone <> '' THEN EXCLUDED.phone ELSE public.users.phone END,
+    phone_prefix = COALESCE(EXCLUDED.phone_prefix, public.users.phone_prefix),
+    instagram = CASE WHEN EXCLUDED.instagram IS NOT NULL AND EXCLUDED.instagram <> '' THEN EXCLUDED.instagram ELSE public.users.instagram END,
+    country = COALESCE(EXCLUDED.country, public.users.country),
     updated_at = timezone('utc'::text, now());
   RETURN NEW;
 END;
@@ -547,9 +554,9 @@ SELECT
   COALESCE(raw_user_meta_data->>'establishment', 'Dirección de Salud / Comunal'),
   COALESCE(raw_user_meta_data->>'healthService', 'Servicio de Salud Metropolitano Norte'),
   UPPER(SUBSTRING(COALESCE(raw_user_meta_data->>'name', email) FROM 1 FOR 1)),
-  COALESCE(raw_user_meta_data->>'phone', '1234567890'),
+  COALESCE(raw_user_meta_data->>'phone', ''),
   COALESCE(raw_user_meta_data->>'phonePrefix', 'CL +56'),
-  COALESCE(raw_user_meta_data->>'instagram', 'tuusuario'),
+  COALESCE(raw_user_meta_data->>'instagram', ''),
   COALESCE(raw_user_meta_data->>'country', 'Chile'),
   COALESCE((raw_user_meta_data->>'budgetYear')::integer, 2026)
 FROM auth.users
@@ -600,66 +607,27 @@ VALUES (
   'Servicio de Salud Metropolitano Norte',
   'KB',
   NULL,
-  '1234567890',
+  NULL,
   'CL +56',
-  'tuusuario',
+  NULL,
   'Chile',
   2026,
-  '{"name": "Klaus Bauer", "email": "kbauergrandon@gmail.com", "phone": "1234567890", "phonePrefix": "CL +56", "instagram": "tuusuario", "country": "Chile"}'::jsonb
+  '{}'::jsonb
 )
-ON CONFLICT (id) DO UPDATE SET
-  name = EXCLUDED.name,
-  email = EXCLUDED.email,
-  phone = COALESCE(EXCLUDED.phone, public.users.phone),
-  phone_prefix = COALESCE(EXCLUDED.phone_prefix, public.users.phone_prefix),
-  instagram = COALESCE(EXCLUDED.instagram, public.users.instagram),
-  country = COALESCE(EXCLUDED.country, public.users.country),
-  data = COALESCE(public.users.data, '{}'::jsonb) || EXCLUDED.data,
-  updated_at = NOW();
-
--- Actualizar todos los registros existentes para este correo en public.users
-UPDATE public.users
-SET 
-  name = 'Klaus Bauer',
-  phone = '1234567890',
-  phone_prefix = 'CL +56',
-  instagram = 'tuusuario',
-  country = 'Chile',
-  data = COALESCE(data, '{}'::jsonb) || jsonb_build_object(
-    'name', 'Klaus Bauer',
-    'email', 'kbauergrandon@gmail.com',
-    'phone', '1234567890',
-    'phonePrefix', 'CL +56',
-    'instagram', 'tuusuario',
-    'country', 'Chile'
-  ),
-  updated_at = NOW()
-WHERE email ILIKE 'kbauergrandon@gmail.com' OR email ILIKE 'klausbauer10x@gmail.com';
+ON CONFLICT (id) DO NOTHING;
 
 -- Sincronizar metadata en auth.users y vincular UUID si existe cuenta de autenticación
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users') THEN
-    UPDATE auth.users
-    SET raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object(
-      'full_name', 'Klaus Bauer',
-      'name', 'Klaus Bauer',
-      'phone', '1234567890',
-      'phone_prefix', 'CL +56',
-      'phonePrefix', 'CL +56',
-      'instagram', 'tuusuario',
-      'country', 'Chile'
-    )
-    WHERE email ILIKE 'kbauergrandon@gmail.com';
-
-    -- Si el usuario ya existe en auth.users, insertar o actualizar también su fila en public.users con su UID de autenticación
+    -- Si el usuario ya existe en auth.users, sincronizar en public.users con su UID auténtico sin sobreescribir datos personalizados
     INSERT INTO public.users (
       id, name, email, role, title, comuna, establishment, health_service,
-      avatar, phone, phone_prefix, instagram, country, budget_year, data
+      avatar, phone, phone_prefix, instagram, country, budget_year
     )
     SELECT 
       id::text,
-      'Klaus Bauer',
+      COALESCE(raw_user_meta_data->>'full_name', raw_user_meta_data->>'name', 'Klaus Bauer'),
       email,
       'referente',
       'Referente de Programas de Salud',
@@ -667,22 +635,14 @@ BEGIN
       'Dirección de Salud / Comunal',
       'Servicio de Salud Metropolitano Norte',
       'KB',
-      '1234567890',
-      'CL +56',
-      'tuusuario',
-      'Chile',
-      2026,
-      '{"name": "Klaus Bauer", "email": "kbauergrandon@gmail.com", "phone": "1234567890", "phonePrefix": "CL +56", "instagram": "tuusuario", "country": "Chile"}'::jsonb
+      COALESCE(raw_user_meta_data->>'phone', ''),
+      COALESCE(raw_user_meta_data->>'phonePrefix', 'CL +56'),
+      COALESCE(raw_user_meta_data->>'instagram', ''),
+      COALESCE(raw_user_meta_data->>'country', 'Chile'),
+      2026
     FROM auth.users
     WHERE email ILIKE 'kbauergrandon@gmail.com'
-    ON CONFLICT (id) DO UPDATE SET
-      name = EXCLUDED.name,
-      phone = EXCLUDED.phone,
-      phone_prefix = EXCLUDED.phone_prefix,
-      instagram = EXCLUDED.instagram,
-      country = EXCLUDED.country,
-      data = COALESCE(public.users.data, '{}'::jsonb) || EXCLUDED.data,
-      updated_at = NOW();
+    ON CONFLICT (id) DO NOTHING;
   END IF;
 END $$;
 
