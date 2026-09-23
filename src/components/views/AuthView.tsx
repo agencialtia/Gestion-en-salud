@@ -26,6 +26,8 @@ import {
   Moon,
   Sun,
   ShieldCheck,
+  UserX,
+  UserPlus,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AuthScreenType } from '../../types';
@@ -58,6 +60,7 @@ export const AuthView: React.FC = () => {
   const [loginPassword, setLoginPassword] = useState('salud2026');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginIsUnregistered, setLoginIsUnregistered] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
 
   // Register form state
@@ -134,11 +137,15 @@ export const AuthView: React.FC = () => {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
+    setLoginIsUnregistered(false);
     setLoginLoading(true);
     try {
       const res = await login(loginIdentifier.trim(), loginPassword);
       if (!res.success) {
         setLoginError(res.error || 'Credenciales inválidas.');
+        if (res.notRegistered) {
+          setLoginIsUnregistered(true);
+        }
       }
     } finally {
       setLoginLoading(false);
@@ -370,46 +377,102 @@ export const AuthView: React.FC = () => {
                 {loginError && (
                   <div
                     className={`mb-4 p-3.5 rounded-2xl border text-xs sm:text-sm ${
-                      loginError.toLowerCase().includes('confirm')
+                      loginIsUnregistered || loginError.toLowerCase().includes('registrad')
                         ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-200'
+                        : loginError.toLowerCase().includes('confirm')
+                        ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/40 text-blue-800 dark:text-blue-200'
                         : 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800/40 text-rose-800 dark:text-rose-200'
                     }`}
                   >
-                    <div className="flex items-start gap-2.5">
-                      <AlertCircle
-                        className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
-                          loginError.toLowerCase().includes('confirm') ? 'text-amber-600' : 'text-rose-600'
-                        }`}
-                      />
-                      <div className="flex-1">
-                        <p className="font-semibold leading-snug">
-                          {loginError.toLowerCase().includes('confirm')
-                            ? 'Tu cuenta aún no está confirmada'
-                            : loginError}
-                        </p>
-                        {loginError.toLowerCase().includes('confirm') && (
-                          <p className="text-xs mt-1 opacity-90">
-                            Debes confirmar tu correo electrónico antes de iniciar sesión.
-                          </p>
-                        )}
+                    {/* Caso 1: Usuario NO registrado */}
+                    {loginIsUnregistered || loginError.toLowerCase().includes('registrad') ? (
+                      <div>
+                        <div className="flex items-start gap-2.5">
+                          <UserX className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+                          <div className="flex-1">
+                            <p className="font-semibold leading-snug">Usuario no registrado</p>
+                            <p className="text-xs mt-1 text-amber-700 dark:text-amber-300">
+                              {loginError}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-2.5 pt-2 border-t border-amber-200 dark:border-amber-800/40 flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-amber-700/80 dark:text-amber-300/80">
+                            ¿Aún no tienes una cuenta?
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const emailToUse = loginIdentifier.trim();
+                              if (emailToUse.includes('@')) {
+                                setRegEmail(emailToUse);
+                              }
+                              setLoginError(null);
+                              setLoginIsUnregistered(false);
+                              setAuthScreen('register');
+                            }}
+                            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1.5 bg-white dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-amber-300/60 dark:border-amber-700/40 shadow-xs"
+                          >
+                            <UserPlus className="w-3.5 h-3.5" />
+                            <span>Crear cuenta ahora</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-
-                    {loginError.toLowerCase().includes('confirm') && (
-                      <div className="mt-2.5 pt-2 border-t border-amber-200 dark:border-amber-800/40 flex items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const email = loginIdentifier.includes('@') ? loginIdentifier : pendingVerificationEmail || '';
-                            if (email) {
-                              resendVerificationLink(email);
-                            }
-                          }}
-                          className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                        >
-                          <Mail className="w-3.5 h-3.5" />
-                          <span>Reenviar correo de confirmación</span>
-                        </button>
+                    ) : loginError.toLowerCase().includes('confirm') ? (
+                      /* Caso 2: Cuenta pendiente de confirmación de email */
+                      <div>
+                        <div className="flex items-start gap-2.5">
+                          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+                          <div className="flex-1">
+                            <p className="font-semibold leading-snug">Tu cuenta aún no está confirmada</p>
+                            <p className="text-xs mt-1 opacity-90">
+                              Debes confirmar tu correo electrónico antes de iniciar sesión.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-2.5 pt-2 border-t border-blue-200 dark:border-blue-800/40 flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const email = loginIdentifier.includes('@') ? loginIdentifier : pendingVerificationEmail || '';
+                              if (email) {
+                                resendVerificationLink(email);
+                              }
+                            }}
+                            className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                          >
+                            <Mail className="w-3.5 h-3.5" />
+                            <span>Reenviar correo de confirmación</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Caso 3: Contraseña incorrecta u otro error */
+                      <div>
+                        <div className="flex items-start gap-2.5">
+                          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0 text-rose-600 dark:text-rose-400" />
+                          <div className="flex-1">
+                            <p className="font-semibold leading-snug">
+                              {loginError.toLowerCase().includes('contraseña') ? 'Contraseña incorrecta' : 'Error al iniciar sesión'}
+                            </p>
+                            <p className="text-xs mt-1 opacity-90">{loginError}</p>
+                          </div>
+                        </div>
+                        {loginError.toLowerCase().includes('contraseña') && (
+                          <div className="mt-2.5 pt-2 border-t border-rose-200 dark:border-rose-800/40 flex items-center justify-end">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setForgotEmail(loginIdentifier.includes('@') ? loginIdentifier : '');
+                                setAuthScreen('forgot_password');
+                              }}
+                              className="text-xs font-semibold text-rose-700 dark:text-rose-300 hover:underline flex items-center gap-1"
+                            >
+                              <KeyRound className="w-3.5 h-3.5" />
+                              <span>¿Olvidaste tu contraseña? Recupérala aquí</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -426,7 +489,13 @@ export const AuthView: React.FC = () => {
                       id="login-email"
                       type="text"
                       value={loginIdentifier}
-                      onChange={(e) => setLoginIdentifier(e.target.value)}
+                      onChange={(e) => {
+                        setLoginIdentifier(e.target.value);
+                        if (loginError) {
+                          setLoginError(null);
+                          setLoginIsUnregistered(false);
+                        }
+                      }}
                       placeholder="kbauergrandon@gmail.com"
                       required
                       className="w-full px-3.5 py-2.5 bg-[#eff6ff]/70 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 text-sm focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition"
@@ -443,7 +512,13 @@ export const AuthView: React.FC = () => {
                         id="login-password"
                         type={showLoginPassword ? 'text' : 'password'}
                         value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
+                        onChange={(e) => {
+                          setLoginPassword(e.target.value);
+                          if (loginError) {
+                            setLoginError(null);
+                            setLoginIsUnregistered(false);
+                          }
+                        }}
                         placeholder="Tu contraseña"
                         required
                         className="w-full pl-3.5 pr-10 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 text-sm focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition"

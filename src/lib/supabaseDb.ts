@@ -868,6 +868,38 @@ export function toDbBudget2025Note(b: ProgramBudget2025Note): any {
    USER IDENTITY AND AUTH METHODS
    ========================================================================== */
 
+export async function checkIfEmailIsRegisteredInSupabase(email: string): Promise<{ registered: boolean; definitive: boolean }> {
+  if (!isSupabaseConfigured() || !email) return { registered: false, definitive: false };
+  const cleanEmail = email.toLowerCase().trim();
+
+  // 1. Intentar función RPC de Postgres 'check_email_registered' (verifica en auth.users y public.users)
+  try {
+    const { data, error } = await supabase.rpc('check_email_registered', { p_email: cleanEmail });
+    if (!error && typeof data === 'boolean') {
+      return { registered: data, definitive: true };
+    }
+  } catch {
+    // Función RPC aún no desplegada
+  }
+
+  // 2. Consulta directa en la tabla public.users
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email')
+      .ilike('email', cleanEmail)
+      .limit(1);
+
+    if (!error && data && data.length > 0) {
+      return { registered: true, definitive: true };
+    }
+  } catch {
+    // Error de consulta o red
+  }
+
+  return { registered: false, definitive: false };
+}
+
 export async function fetchUserByIdOrEmailFromSupabase(id?: string, email?: string): Promise<User | null> {
   if (!isSupabaseConfigured()) return null;
   try {

@@ -500,6 +500,41 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
+-- Función RPC para verificar de forma segura si un correo está registrado
+CREATE OR REPLACE FUNCTION public.check_email_registered(p_email TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_clean_email TEXT := LOWER(TRIM(p_email));
+BEGIN
+  IF v_clean_email IS NULL OR v_clean_email = '' THEN
+    RETURN FALSE;
+  END IF;
+
+  -- 1. Verificar si existe en auth.users
+  IF EXISTS (
+    SELECT 1 FROM auth.users 
+    WHERE LOWER(TRIM(email)) = v_clean_email
+  ) THEN
+    RETURN TRUE;
+  END IF;
+
+  -- 2. Verificar si existe en public.users
+  IF EXISTS (
+    SELECT 1 FROM public.users 
+    WHERE LOWER(TRIM(email)) = v_clean_email
+  ) THEN
+    RETURN TRUE;
+  END IF;
+
+  RETURN FALSE;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.check_email_registered(TEXT) TO anon, authenticated, service_role;
+
 -- Sincronizar usuarios existentes en auth.users si no estaban en public.users
 INSERT INTO public.users (id, name, email, role, title, comuna, establishment, health_service, avatar, phone, phone_prefix, instagram, country, budget_year)
 SELECT

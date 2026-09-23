@@ -147,6 +147,7 @@ import {
   deleteBudget2025NoteFromSupabase,
   upsertUserInSupabase,
   fetchUserByIdOrEmailFromSupabase,
+  checkIfEmailIsRegisteredInSupabase,
   generateUUID,
   SupabaseDbStatus,
 } from '../lib/supabaseDb';
@@ -191,7 +192,7 @@ interface AppContextType {
   setPendingVerificationEmail: (email: string | null) => void;
   pendingResetEmail: string | null;
   setPendingResetEmail: (email: string | null) => void;
-  login: (identifier: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (identifier: string, password: string) => Promise<{ success: boolean; error?: string; notRegistered?: boolean }>;
   signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   loginWithGoogle: (customData?: { email?: string; credential?: string }) => Promise<{ success: boolean; error?: string }>;
   registerWithGoogle: (data?: { email?: string; name?: string; role?: string; title?: string; establishment?: string; healthService?: string; photoUrl?: string; credential?: string }) => Promise<{ success: boolean; error?: string }>;
@@ -956,22 +957,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   }, []);
 
-  const login = async (identifier: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (identifier: string, password: string): Promise<{ success: boolean; error?: string; notRegistered?: boolean }> => {
     const cleanId = identifier.trim();
+    if (!cleanId) {
+      return { success: false, error: 'Por favor ingresa tu correo electrónico.' };
+    }
+    if (!password) {
+      return { success: false, error: 'Por favor ingresa tu contraseña.' };
+    }
 
     // 1. If Supabase is configured and identifier looks like an email, try Supabase Auth
     if (isSupabaseConfigured() && cleanId.includes('@')) {
+      const cleanEmail = cleanId.toLowerCase();
       try {
         const supabase = getSupabase();
+
+        // Verificar primero si el correo está registrado en la base de datos
+        const regCheck = await checkIfEmailIsRegisteredInSupabase(cleanEmail);
+        const inLocalList = registeredAccounts.some((a) => a.email.toLowerCase() === cleanEmail);
+
+        // Si la verificación determinó con certeza que NO existe en auth.users ni en public.users ni en local
+        if (regCheck.definitive && !regCheck.registered && !inLocalList) {
+          return {
+            success: false,
+            error: 'Este correo electrónico no se encuentra registrado en el sistema. Debes crear una cuenta antes de iniciar sesión.',
+            notRegistered: true,
+          };
+        }
+
         const { data, error } = await supabase.auth.signInWithPassword({
-          email: cleanId.toLowerCase(),
+          email: cleanEmail,
           password,
         });
 
         if (error) {
           const msg = error.message.toLowerCase();
           if (msg.includes('email not confirmed') || msg.includes('not confirmed') || (error.status === 400 && msg.includes('confirmed'))) {
-            setPendingVerificationEmail(cleanId.toLowerCase());
+            setPendingVerificationEmail(cleanEmail);
             setAuthScreen('verify_email');
             return {
               success: false,
@@ -979,20 +1001,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             };
           }
 
-          if (
-            msg.includes('invalid login credentials') ||
-            msg.includes('invalid_grant') ||
-            msg.includes('user not found') ||
-            msg.includes('user not registered') ||
-            error.status === 400
-          ) {
+          // Si el usuario estaba registrado, el fallo de credenciales es por contraseña incorrecta
+          if (regCheck.registered || inLocalList) {
             return {
               success: false,
-              error: 'Credenciales inválidas. Este usuario no está registrado o la contraseña es incorrecta.',
+              error: 'Contraseña incorrecta. Por favor verifícala e inténtalo nuevamente.',
+              notRegistered: false,
             };
           }
 
-          return { success: false, error: error.message };
+          // Si regCheck no fue definitivo, verificamos si existe en public.users
+          const existingInDb = await fetchUserByIdOrEmailFromSupabase(undefined, cleanEmail);
+          if (existingInDb) {
+            return {
+              success: false,
+              error: 'Contraseña incorrecta. Por favor verifícala e inténtalo nuevamente.',
+              notRegistered: false,
+            };
+          }
+
+          // Si no existe en ningún lado, no está registrado
+          return {
+            success: false,
+            error: 'Este correo electrónico no se encuentra registrado en el sistema. Debes crear una cuenta antes de iniciar sesión.',
+            notRegistered: true,
+          };
         }
 
         if (data?.user) {
@@ -1051,18 +1084,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
-    // 2. Fallback / Local account login (supports username or demo accounts)
+    // 2. Fallback / Local account login (para cuentas locales o sin conexión activa a Supabase)
     const lowerId = cleanId.toLowerCase();
     const account = registeredAccounts.find(
       (a) => a.email.toLowerCase() === lowerId || (a.username && a.username.toLowerCase() === lowerId)
     );
 
     if (!account) {
-      return { success: false, error: 'No existe una cuenta registrada con este correo o usuario.' };
+      return {
+        success: false,
+        error: 'Este correo electrónico o usuario no se encuentra registrado en el sistema. Debes registrarte primero.',
+        notRegistered: true,
+      };
     }
 
     if (account.passwordHash && account.passwordHash !== password) {
-      return { success: false, error: 'La contraseña ingresada no es válida. Si la olvidaste, puedes recuperarla.' };
+      return {
+        success: false,
+        error: 'Contraseña incorrecta. Por favor verifícala e inténtalo nuevamente.',
+        notRegistered: false,
+      };
     }
 
     if (!account.emailVerified) {
@@ -1070,7 +1111,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setAuthScreen('verify_email');
       return {
         success: false,
-        error: 'Email not confirmed',
+        error: 'Debes confirmar tu correo electrónico antes de iniciar sesión. Revisa tu bandeja de entrada.',
       };
     }
 
@@ -1387,6 +1428,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             avatar,
           });
 
+          const isConfirmed = Boolean(signUpData.user.email_confirmed_at || signUpData.session);
+
           const newAccount: AuthAccount = {
             id: userId,
             email: cleanEmail,
@@ -1400,14 +1443,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             healthService: data.healthService || 'SSMN (Metropolitano Norte)',
             avatar,
             authProvider: 'email',
-            emailVerified: Boolean(signUpData.user.email_confirmed_at),
+            emailVerified: isConfirmed,
             createdAt: new Date().toISOString(),
           };
 
           setRegisteredAccounts((prev) => [...prev.filter((a) => a.email.toLowerCase() !== cleanEmail), newAccount]);
-          setPendingVerificationEmail(cleanEmail);
-          setAuthScreen('verify_email');
-          showToast(`Revisa tu correo para confirmar tu cuenta (${cleanEmail})`, 'info');
+
+          if (isConfirmed) {
+            setPendingVerificationEmail(null);
+            setAuthScreen('login');
+            showToast('¡Cuenta creada exitosamente! Ahora puedes iniciar sesión con tu correo y contraseña.', 'success');
+          } else {
+            setPendingVerificationEmail(cleanEmail);
+            setAuthScreen('verify_email');
+            showToast(`Revisa tu correo para confirmar tu cuenta (${cleanEmail})`, 'info');
+          }
 
           return { success: true };
         }
