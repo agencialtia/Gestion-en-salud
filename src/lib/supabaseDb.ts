@@ -268,35 +268,86 @@ export function toDbMeeting(m: Meeting): any {
 export function fromDbIndicator(row: any): Indicator {
   const extra = row.data && typeof row.data === 'object' ? row.data : {};
 
-  const annualTarget = row.annual_target !== undefined && row.annual_target !== null
+  // Resolve annual target with multi-tier fallback
+  const annualTarget = !isNaN(Number(row.annual_target)) && row.annual_target !== null
     ? Number(row.annual_target)
-    : (extra.annualTarget !== undefined ? Number(extra.annualTarget) : (Number(row.target_value) || 100));
+    : (!isNaN(Number(extra.annualTarget)) && extra.annualTarget !== null
+      ? Number(extra.annualTarget)
+      : (!isNaN(Number(row.target_value)) && row.target_value !== null ? Number(row.target_value) : 100));
 
-  const periodTarget = row.period_target !== undefined && row.period_target !== null
+  // Resolve period target with multi-tier fallback
+  const periodTarget = !isNaN(Number(row.period_target)) && row.period_target !== null
     ? Number(row.period_target)
-    : (extra.periodTarget !== undefined ? Number(extra.periodTarget) : annualTarget);
+    : (!isNaN(Number(extra.periodTarget)) && extra.periodTarget !== null
+      ? Number(extra.periodTarget)
+      : annualTarget);
 
-  const currentResult = row.current_result !== undefined && row.current_result !== null
+  // Resolve current result with multi-tier fallback
+  const currentResult = !isNaN(Number(row.current_result)) && row.current_result !== null
     ? Number(row.current_result)
-    : (extra.currentResult !== undefined ? Number(extra.currentResult) : (Number(row.current_value) || 0));
+    : (!isNaN(Number(extra.currentResult)) && extra.currentResult !== null
+      ? Number(extra.currentResult)
+      : (!isNaN(Number(row.current_value)) && row.current_value !== null ? Number(row.current_value) : 0));
 
-  const corte1 = row.corte1 ?? extra.corte1 ?? {
-    target: periodTarget,
-    targetQuantity: row.period_target_quantity !== undefined && row.period_target_quantity !== null ? Number(row.period_target_quantity) : extra.periodTargetQuantity,
-    result: currentResult,
-    resultQuantity: row.current_result_quantity !== undefined && row.current_result_quantity !== null ? Number(row.current_result_quantity) : extra.currentResultQuantity,
-    date: '2026-07-31',
-    source: row.source || extra.source || 'REM / Rayen',
+  // Normalize corte1
+  const rawC1 = (row.corte1 && typeof row.corte1 === 'object') ? row.corte1 : (extra.corte1 && typeof extra.corte1 === 'object' ? extra.corte1 : null);
+  const corte1 = {
+    target: rawC1?.target !== undefined && rawC1?.target !== null && !isNaN(Number(rawC1.target))
+      ? Number(rawC1.target)
+      : periodTarget,
+    targetQuantity: rawC1?.targetQuantity !== undefined && rawC1?.targetQuantity !== null && !isNaN(Number(rawC1.targetQuantity))
+      ? Number(rawC1.targetQuantity)
+      : (row.period_target_quantity !== undefined && row.period_target_quantity !== null && !isNaN(Number(row.period_target_quantity)) ? Number(row.period_target_quantity) : extra.periodTargetQuantity),
+    result: rawC1?.result !== undefined && rawC1?.result !== null && !isNaN(Number(rawC1.result))
+      ? Number(rawC1.result)
+      : currentResult,
+    resultQuantity: rawC1?.resultQuantity !== undefined && rawC1?.resultQuantity !== null && !isNaN(Number(rawC1.resultQuantity))
+      ? Number(rawC1.resultQuantity)
+      : (row.current_result_quantity !== undefined && row.current_result_quantity !== null && !isNaN(Number(row.current_result_quantity)) ? Number(row.current_result_quantity) : extra.currentResultQuantity),
+    date: rawC1?.date || row.cutoff_date || extra.cutoffDate || '2026-07-31',
+    source: rawC1?.source || row.source || extra.source || 'REM / Rayen',
+    notes: rawC1?.notes || extra.notes || undefined,
   };
 
-  const corte2 = row.corte2 ?? extra.corte2 ?? {
-    target: annualTarget,
-    targetQuantity: row.annual_target_quantity !== undefined && row.annual_target_quantity !== null ? Number(row.annual_target_quantity) : extra.annualTargetQuantity,
-    result: currentResult,
-    resultQuantity: row.current_result_quantity !== undefined && row.current_result_quantity !== null ? Number(row.current_result_quantity) : extra.currentResultQuantity,
-    date: '2026-12-31',
-    source: row.source || extra.source || 'REM / Rayen',
+  // Normalize corte2
+  const rawC2 = (row.corte2 && typeof row.corte2 === 'object') ? row.corte2 : (extra.corte2 && typeof extra.corte2 === 'object' ? extra.corte2 : null);
+  const corte2 = {
+    target: rawC2?.target !== undefined && rawC2?.target !== null && !isNaN(Number(rawC2.target))
+      ? Number(rawC2.target)
+      : annualTarget,
+    targetQuantity: rawC2?.targetQuantity !== undefined && rawC2?.targetQuantity !== null && !isNaN(Number(rawC2.targetQuantity))
+      ? Number(rawC2.targetQuantity)
+      : (row.annual_target_quantity !== undefined && row.annual_target_quantity !== null && !isNaN(Number(row.annual_target_quantity)) ? Number(row.annual_target_quantity) : extra.annualTargetQuantity),
+    result: rawC2?.result !== undefined && rawC2?.result !== null && !isNaN(Number(rawC2.result))
+      ? Number(rawC2.result)
+      : currentResult,
+    resultQuantity: rawC2?.resultQuantity !== undefined && rawC2?.resultQuantity !== null && !isNaN(Number(rawC2.resultQuantity))
+      ? Number(rawC2.resultQuantity)
+      : (row.current_result_quantity !== undefined && row.current_result_quantity !== null && !isNaN(Number(row.current_result_quantity)) ? Number(row.current_result_quantity) : extra.currentResultQuantity),
+    date: rawC2?.date || '2026-12-31',
+    source: rawC2?.source || row.source || extra.source || 'REM / Rayen',
+    notes: rawC2?.notes || undefined,
   };
+
+  // Normalize corte3
+  const rawC3 = (row.corte3 && typeof row.corte3 === 'object') ? row.corte3 : (extra.corte3 && typeof extra.corte3 === 'object' ? extra.corte3 : null);
+  const corte3 = rawC3 ? {
+    target: rawC3.target !== undefined && rawC3.target !== null && !isNaN(Number(rawC3.target))
+      ? Number(rawC3.target)
+      : annualTarget,
+    targetQuantity: rawC3.targetQuantity !== undefined && rawC3.targetQuantity !== null && !isNaN(Number(rawC3.targetQuantity))
+      ? Number(rawC3.targetQuantity)
+      : undefined,
+    result: rawC3.result !== undefined && rawC3.result !== null && !isNaN(Number(rawC3.result))
+      ? Number(rawC3.result)
+      : currentResult,
+    resultQuantity: rawC3.resultQuantity !== undefined && rawC3.resultQuantity !== null && !isNaN(Number(rawC3.resultQuantity))
+      ? Number(rawC3.resultQuantity)
+      : undefined,
+    date: rawC3.date || '2026-12-31',
+    source: rawC3.source || row.source || extra.source || 'REM / Rayen',
+    notes: rawC3.notes || undefined,
+  } : undefined;
 
   return {
     ...extra,
@@ -341,7 +392,7 @@ export function fromDbIndicator(row: any): Indicator {
       ? Number(row.denominador_valor)
       : extra.denominadorValor,
     denominadorTipo: row.denominador_tipo ?? extra.denominadorTipo ?? 'porcentaje',
-    pesoRelativo: row.peso_relativo !== undefined && row.peso_relativo !== null
+    pesoRelativo: row.peso_relativo !== undefined && row.peso_relativo !== null && !isNaN(Number(row.peso_relativo))
       ? Number(row.peso_relativo)
       : (extra.pesoRelativo ?? 50),
     medioVerificacionNumerador: row.medio_verificacion_numerador ?? extra.medioVerificacionNumerador,
@@ -354,7 +405,7 @@ export function fromDbIndicator(row: any): Indicator {
     source: row.source ?? extra.source ?? 'REM / Rayen',
     corte1,
     corte2,
-    corte3: row.corte3 ?? extra.corte3,
+    corte3,
   };
 }
 
@@ -362,6 +413,22 @@ export function toDbIndicator(i: Indicator): any {
   const targetVal = Number(i.annualTarget ?? i.targetValue ?? 100);
   const currentVal = Number(i.currentResult ?? i.currentValue ?? 0);
   const weightVal = Number(i.pesoRelativo ?? i.weight ?? 1);
+  const cleanTarget = isNaN(targetVal) ? 100 : targetVal;
+  const cleanCurrent = isNaN(currentVal) ? 0 : currentVal;
+  const cleanWeight = isNaN(weightVal) ? 1 : weightVal;
+
+  const sanitizeCut = (cut: any) => {
+    if (!cut || typeof cut !== 'object') return null;
+    return {
+      target: !isNaN(Number(cut.target)) ? Number(cut.target) : cleanTarget,
+      targetQuantity: cut.targetQuantity !== undefined && !isNaN(Number(cut.targetQuantity)) ? Number(cut.targetQuantity) : null,
+      result: !isNaN(Number(cut.result)) ? Number(cut.result) : cleanCurrent,
+      resultQuantity: cut.resultQuantity !== undefined && !isNaN(Number(cut.resultQuantity)) ? Number(cut.resultQuantity) : null,
+      date: cut.date || '2026-07-31',
+      source: cut.source || i.source || 'REM / Rayen',
+      notes: cut.notes || null,
+    };
+  };
 
   return {
     id: ensureUUID(i.id),
@@ -369,11 +436,11 @@ export function toDbIndicator(i: Indicator): any {
     code: i.code || '',
     name: i.name || '',
     description: i.description || i.objetivoEspecifico || '',
-    target_value: isNaN(targetVal) ? 100 : targetVal,
-    current_value: isNaN(currentVal) ? 0 : currentVal,
+    target_value: cleanTarget,
+    current_value: cleanCurrent,
     unit: i.unit || '%',
     periodicity: i.periodicity || 'mensual',
-    weight: isNaN(weightVal) ? 1 : weightVal,
+    weight: cleanWeight,
     good_threshold: Number(i.goodThreshold) || 85,
     warning_threshold: Number(i.warningThreshold) || 70,
     measurements: Array.isArray(i.measurements) ? i.measurements : [],
@@ -385,27 +452,27 @@ export function toDbIndicator(i: Indicator): any {
     objetivo_especifico: i.objetivoEspecifico || i.description || null,
     corte_seleccionado: i.corteSeleccionado || '1° corte',
     numerador_descripcion: i.numeradorDescripcion || null,
-    numerador_valor: i.numeradorValor !== undefined ? Number(i.numeradorValor) : null,
+    numerador_valor: i.numeradorValor !== undefined && !isNaN(Number(i.numeradorValor)) ? Number(i.numeradorValor) : null,
     numerador_tipo: i.numeradorTipo || 'porcentaje',
     denominador_descripcion: i.denominadorDescripcion || null,
-    denominador_valor: i.denominadorValor !== undefined ? Number(i.denominadorValor) : null,
+    denominador_valor: i.denominadorValor !== undefined && !isNaN(Number(i.denominadorValor)) ? Number(i.denominadorValor) : null,
     denominador_tipo: i.denominadorTipo || 'porcentaje',
-    peso_relativo: i.pesoRelativo !== undefined ? Number(i.pesoRelativo) : weightVal,
+    peso_relativo: i.pesoRelativo !== undefined && !isNaN(Number(i.pesoRelativo)) ? Number(i.pesoRelativo) : cleanWeight,
     medio_verificacion_numerador: i.medioVerificacionNumerador || null,
     medio_verificacion_denominador: i.medioVerificacionDenominador || null,
     meta_cumplimiento_anual_texto: i.metaCumplimientoAnualTexto || null,
-    meta_cumplimiento_anual_porcentaje: i.metaCumplimientoAnualPorcentaje !== undefined ? Number(i.metaCumplimientoAnualPorcentaje) : targetVal,
-    annual_target: i.annualTarget !== undefined ? Number(i.annualTarget) : targetVal,
-    annual_target_quantity: i.annualTargetQuantity !== undefined ? Number(i.annualTargetQuantity) : null,
-    period_target: i.periodTarget !== undefined ? Number(i.periodTarget) : targetVal,
-    period_target_quantity: i.periodTargetQuantity !== undefined ? Number(i.periodTargetQuantity) : null,
-    current_result: i.currentResult !== undefined ? Number(i.currentResult) : currentVal,
-    current_result_quantity: i.currentResultQuantity !== undefined ? Number(i.currentResultQuantity) : null,
+    meta_cumplimiento_anual_porcentaje: i.metaCumplimientoAnualPorcentaje !== undefined && !isNaN(Number(i.metaCumplimientoAnualPorcentaje)) ? Number(i.metaCumplimientoAnualPorcentaje) : cleanTarget,
+    annual_target: i.annualTarget !== undefined && !isNaN(Number(i.annualTarget)) ? Number(i.annualTarget) : cleanTarget,
+    annual_target_quantity: i.annualTargetQuantity !== undefined && !isNaN(Number(i.annualTargetQuantity)) ? Number(i.annualTargetQuantity) : null,
+    period_target: i.periodTarget !== undefined && !isNaN(Number(i.periodTarget)) ? Number(i.periodTarget) : cleanTarget,
+    period_target_quantity: i.periodTargetQuantity !== undefined && !isNaN(Number(i.periodTargetQuantity)) ? Number(i.periodTargetQuantity) : null,
+    current_result: i.currentResult !== undefined && !isNaN(Number(i.currentResult)) ? Number(i.currentResult) : cleanCurrent,
+    current_result_quantity: i.currentResultQuantity !== undefined && !isNaN(Number(i.currentResultQuantity)) ? Number(i.currentResultQuantity) : null,
     source: i.source || 'REM / Rayen',
     cutoff_date: i.cutoffDate || null,
-    corte1: i.corte1 || null,
-    corte2: i.corte2 || null,
-    corte3: i.corte3 || null,
+    corte1: sanitizeCut(i.corte1),
+    corte2: sanitizeCut(i.corte2),
+    corte3: i.corte3 ? sanitizeCut(i.corte3) : null,
     data: { ...i },
   };
 }

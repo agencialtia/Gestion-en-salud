@@ -708,14 +708,46 @@ export const EntityDrawer: React.FC<{
     setNewAttachmentName('');
   };
 
+  const handleCorteChange = (newCorte: string) => {
+    setIndCorte(newCorte as any);
+    if (!indicator) return;
+
+    const cutData =
+      newCorte === '2° corte'
+        ? indicator.corte2
+        : newCorte === '3° corte'
+        ? indicator.corte3
+        : indicator.corte1;
+
+    if (cutData) {
+      if (cutData.target !== undefined && !isNaN(Number(cutData.target))) {
+        setIndMetaCortePorc(String(cutData.target));
+      } else {
+        setIndMetaCortePorc(newCorte === '2° corte' ? String(indicator.annualTarget || 100) : '90');
+      }
+      if (cutData.targetQuantity !== undefined && !isNaN(Number(cutData.targetQuantity))) {
+        setIndMetaCorteCant(String(cutData.targetQuantity));
+      } else {
+        setIndMetaCorteCant('');
+      }
+      if (cutData.date) {
+        setIndFechaCorte(cutData.date);
+      }
+    } else {
+      setIndMetaCortePorc(newCorte === '2° corte' ? String(indicator.annualTarget || 100) : '90');
+      setIndMetaCorteCant('');
+      setIndFechaCorte(newCorte === '2° corte' ? '2026-12-31' : '2026-08-15');
+    }
+  };
+
   const handleSaveIndicator = () => {
     if (!indicator) return;
-    const numAnnualPorc = parseFloat(indMetaAnualPorc) || indicator.annualTarget || 100;
-    const numAnnualCant = indMetaAnualCant ? parseFloat(indMetaAnualCant) : undefined;
-    const numCortePorc = parseFloat(indMetaCortePorc) || numAnnualPorc;
-    const numCorteCant = indMetaCorteCant ? parseFloat(indMetaCorteCant) : undefined;
-    const numCurrentPorc = parseFloat(indCurrent) || indicator.currentResult || 0;
-    const numCurrentCant = indCurrentCant ? parseFloat(indCurrentCant) : undefined;
+    const numAnnualPorc = !isNaN(parseFloat(indMetaAnualPorc)) ? parseFloat(indMetaAnualPorc) : (indicator.annualTarget || 100);
+    const numAnnualCant = indMetaAnualCant && !isNaN(parseFloat(indMetaAnualCant)) ? parseFloat(indMetaAnualCant) : undefined;
+    const numCortePorc = !isNaN(parseFloat(indMetaCortePorc)) ? parseFloat(indMetaCortePorc) : numAnnualPorc;
+    const numCorteCant = indMetaCorteCant && !isNaN(parseFloat(indMetaCorteCant)) ? parseFloat(indMetaCorteCant) : undefined;
+    const numCurrentPorc = !isNaN(parseFloat(indCurrent)) ? parseFloat(indCurrent) : (indicator.currentResult || 0);
+    const numCurrentCant = indCurrentCant && !isNaN(parseFloat(indCurrentCant)) ? parseFloat(indCurrentCant) : undefined;
 
     const cutData = {
       target: numCortePorc,
@@ -723,9 +755,21 @@ export const EntityDrawer: React.FC<{
       result: numCurrentPorc,
       resultQuantity: numCurrentCant,
       date: indFechaCorte,
-      source: indMedioNum || indicator.source,
+      source: indMedioNum || indicator.source || 'REM / Rayen',
       notes: indObjetivo || undefined,
     };
+
+    const c1 = indCorte === '1° corte'
+      ? cutData
+      : (indicator.corte1 && indicator.corte1.target !== undefined ? indicator.corte1 : { target: numCortePorc, result: numCurrentPorc, date: '2026-07-31', source: indicator.source || 'REM / Rayen' });
+
+    const c2 = indCorte === '2° corte'
+      ? cutData
+      : (indicator.corte2 && indicator.corte2.target !== undefined ? indicator.corte2 : { target: numAnnualPorc, result: numCurrentPorc, date: '2026-12-31', source: indicator.source || 'REM / Rayen' });
+
+    const c3 = indCorte === '3° corte'
+      ? cutData
+      : indicator.corte3;
 
     updateIndicator(indicator.id, {
       code: indCode.trim() || indicator.code,
@@ -735,12 +779,12 @@ export const EntityDrawer: React.FC<{
       objetivoEspecifico: indObjetivo.trim() || undefined,
       corteSeleccionado: indCorte,
       numeradorDescripcion: indNumDesc.trim() || undefined,
-      numeradorValor: indNumPorc ? parseFloat(indNumPorc) : undefined,
+      numeradorValor: indNumPorc && !isNaN(parseFloat(indNumPorc)) ? parseFloat(indNumPorc) : undefined,
       numeradorTipo: indNumTipo,
       denominadorDescripcion: indDenDesc.trim() || undefined,
-      denominadorValor: indDenPorc ? parseFloat(indDenPorc) : undefined,
+      denominadorValor: indDenPorc && !isNaN(parseFloat(indDenPorc)) ? parseFloat(indDenPorc) : undefined,
       denominadorTipo: indDenTipo,
-      pesoRelativo: indPesoRelativo ? parseFloat(indPesoRelativo) : undefined,
+      pesoRelativo: indPesoRelativo && !isNaN(parseFloat(indPesoRelativo)) ? parseFloat(indPesoRelativo) : undefined,
       medioVerificacionNumerador: indMedioNum.trim() || undefined,
       medioVerificacionDenominador: indMedioDen.trim() || undefined,
       metaCumplimientoAnualTexto: indMetaAnualTexto.trim() || undefined,
@@ -752,14 +796,14 @@ export const EntityDrawer: React.FC<{
       currentResult: numCurrentPorc,
       currentResultQuantity: numCurrentCant,
       cutoffDate: indFechaCorte,
-      source: indMedioNum || indicator.source,
-      corte1: indCorte === '1° corte' ? cutData : (indicator.corte1 || { target: numCortePorc, result: numCurrentPorc, date: '2026-07-31' }),
-      corte2: indCorte === '2° corte' ? cutData : (indicator.corte2 || { target: numAnnualPorc, result: numCurrentPorc, date: '2026-12-31' }),
-      corte3: indCorte === '3° corte' ? cutData : indicator.corte3,
+      source: indMedioNum || indicator.source || 'REM / Rayen',
+      corte1: c1,
+      corte2: c2,
+      corte3: c3,
     });
 
     setIndSavedSuccess(true);
-    showToast('Indicador guardado exitosamente', 'success');
+    showToast('Indicador guardado exitosamente en base de datos', 'success');
     setTimeout(() => setIndSavedSuccess(false), 3000);
   };
 
@@ -902,7 +946,7 @@ export const EntityDrawer: React.FC<{
                       </label>
                       <select
                         value={indCorte}
-                        onChange={(e) => setIndCorte(e.target.value as any)}
+                        onChange={(e) => handleCorteChange(e.target.value)}
                         className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       >
                         <option value="1° corte">1° corte</option>
@@ -1287,45 +1331,73 @@ export const EntityDrawer: React.FC<{
               <div className="lg:col-span-5 space-y-4">
                 
                 {/* Visual Summary Card */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      Resumen de Cortes y Desempeño
-                    </span>
-                    <TrafficLightBadge
-                      status={complianceRate >= 90 ? 'verde' : complianceRate >= 75 ? 'amarillo' : 'rojo'}
-                    />
-                  </div>
+                {(() => {
+                  const liveAnnual = !isNaN(parseFloat(indMetaAnualPorc))
+                    ? parseFloat(indMetaAnualPorc)
+                    : (indicator.annualTarget !== undefined && !isNaN(Number(indicator.annualTarget)) ? Number(indicator.annualTarget) : 100);
+                  const liveCurrent = !isNaN(parseFloat(indCurrent))
+                    ? parseFloat(indCurrent)
+                    : (indicator.currentResult !== undefined && !isNaN(Number(indicator.currentResult)) ? Number(indicator.currentResult) : 0);
+                  const dynamicCompliance = liveAnnual > 0
+                    ? Math.min(Math.round((liveCurrent / liveAnnual) * 100), 999)
+                    : 0;
 
-                  <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
-                    <div>
-                      <span className="text-[10px] text-slate-500 block">Meta Anual</span>
-                      <span className="text-xs font-bold text-slate-800">{indicator.annualTarget} %</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 block">1° Corte</span>
-                      <span className="text-xs font-bold text-slate-800 truncate block">
-                        {indicator.corte1 ? `${indicator.corte1.result} / ${indicator.corte1.target}%` : `${indicator.currentResult} / ${indicator.periodTarget}%`}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 block">2° Corte</span>
-                      <span className="text-xs font-bold text-indigo-600 truncate block">
-                        {indicator.corte2 ? `${indicator.corte2.result} / ${indicator.corte2.target}%` : `Meta: ${indicator.annualTarget}%`}
-                      </span>
-                    </div>
-                  </div>
+                  const c1TargetVal = indicator.corte1?.target !== undefined && !isNaN(Number(indicator.corte1.target))
+                    ? Number(indicator.corte1.target)
+                    : (indCorte === '1° corte' && !isNaN(parseFloat(indMetaCortePorc)) ? parseFloat(indMetaCortePorc) : liveAnnual);
+                  const c1ResultVal = indicator.corte1?.result !== undefined && !isNaN(Number(indicator.corte1.result))
+                    ? Number(indicator.corte1.result)
+                    : (indCorte === '1° corte' ? liveCurrent : 0);
 
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-xs font-semibold">
-                      <span className="text-slate-600">Cumplimiento Acumulado</span>
-                      <span className="text-slate-900 font-bold">{complianceRate}%</span>
+                  const c2TargetVal = indicator.corte2?.target !== undefined && !isNaN(Number(indicator.corte2.target))
+                    ? Number(indicator.corte2.target)
+                    : (indCorte === '2° corte' && !isNaN(parseFloat(indMetaCortePorc)) ? parseFloat(indMetaCortePorc) : liveAnnual);
+                  const c2ResultVal = indicator.corte2?.result !== undefined && !isNaN(Number(indicator.corte2.result))
+                    ? Number(indicator.corte2.result)
+                    : (indCorte === '2° corte' ? liveCurrent : 0);
+
+                  return (
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          Resumen de Cortes y Desempeño
+                        </span>
+                        <TrafficLightBadge
+                          status={dynamicCompliance >= 90 ? 'verde' : dynamicCompliance >= 75 ? 'amarillo' : 'rojo'}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                        <div>
+                          <span className="text-[10px] text-slate-500 block">Meta Anual</span>
+                          <span className="text-xs font-bold text-slate-800">{liveAnnual}%</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-500 block">1° Corte</span>
+                          <span className="text-xs font-bold text-slate-800 truncate block">
+                            {`${c1ResultVal} / ${c1TargetVal}%`}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-500 block">2° Corte</span>
+                          <span className="text-xs font-bold text-indigo-600 truncate block">
+                            {`${c2ResultVal} / ${c2TargetVal}%`}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs font-semibold">
+                          <span className="text-slate-600">Cumplimiento Acumulado</span>
+                          <span className="text-slate-900 font-bold">{dynamicCompliance}%</span>
+                        </div>
+                        <ProgressBar
+                          value={dynamicCompliance}
+                        />
+                      </div>
                     </div>
-                    <ProgressBar
-                      value={complianceRate}
-                    />
-                  </div>
-                </div>
+                  );
+                })()}
 
                 {/* Record New Measurement */}
                 <div className="p-4 bg-indigo-50/60 border border-indigo-100 rounded-2xl space-y-3">
@@ -1370,7 +1442,9 @@ export const EntityDrawer: React.FC<{
                     type="button"
                     onClick={() => {
                       if (!measurementValue) return;
-                      recordMeasurement(indicator.id, parseFloat(measurementValue), measurementPeriod, measurementNotes);
+                      const val = parseFloat(measurementValue);
+                      recordMeasurement(indicator.id, val, measurementPeriod, measurementNotes);
+                      setIndCurrent(String(val));
                       setMeasurementValue('');
                       setMeasurementNotes('');
                       showToast('Medición guardada en el historial', 'success');

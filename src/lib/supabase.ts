@@ -4,7 +4,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const FALLBACK_URL = 'https://placeholder.supabase.co';
 const FALLBACK_KEY = 'placeholder_key_not_configured';
 
-// Environment variable retrieval with support for Vite (VITE_*) and Next.js (NEXT_PUBLIC_*)
+// Environment variable retrieval with support for Vite (VITE_*), Next.js (NEXT_PUBLIC_*), and localStorage
 const getEnvVar = (viteKey: string, nextKey: string): string => {
   if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
     const metaVal = (import.meta as any).env[viteKey] || (import.meta as any).env[nextKey];
@@ -13,6 +13,17 @@ const getEnvVar = (viteKey: string, nextKey: string): string => {
   if (typeof process !== 'undefined' && process.env) {
     const procVal = process.env[viteKey] || process.env[nextKey];
     if (procVal) return String(procVal).trim();
+  }
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const localVal =
+        window.localStorage.getItem(viteKey) ||
+        window.localStorage.getItem(nextKey) ||
+        (viteKey.includes('URL') ? window.localStorage.getItem('CUSTOM_SUPABASE_URL') : window.localStorage.getItem('CUSTOM_SUPABASE_KEY'));
+      if (localVal) return String(localVal).trim();
+    } catch {
+      // localStorage restricted
+    }
   }
   return '';
 };
