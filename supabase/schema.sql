@@ -1,39 +1,30 @@
 -- ==============================================================================
 -- SISTEMA DE GESTIÓN QUILICURA SALUD (DISAM)
--- ESQUEMA COMPLETO Y ACTUALIZADO PARA SUPABASE (POSTGRESQL)
+-- CÓDIGO SQL CONSOLIDADO, DEFINITIVO Y ACTUALIZADO PARA SUPABASE (POSTGRESQL)
 -- 
--- Compatible con:
--- 1. Resumen y Programas de Salud (health_programs)
--- 2. Tareas y Planificación (tasks)
--- 3. Compras y Adquisiciones (purchases)
--- 4. Reuniones, Acuerdos y Compromisos (meetings)
--- 5. Indicadores y Evaluaciones Sanitarias (indicators)
--- 6. Directorio de Contactos (contacts)
--- 7. Preguntas y Dudas Técnicas (questions)
--- 8. Alertas y Notificaciones (alerts)
--- 9. Establecimientos de la Red APS (establishments)
--- 10. Períodos Financieros y Presupuestos (financial_periods)
--- 11. Componentes Presupuestarios Subtítulo 21, 22, 29 (budget_components)
--- 12. Presupuestos Referenciales y Notas Históricas (budget_2025_notes)
--- 13. Correos y Requerimientos de Salud (emails)
--- 14. Biblioteca de Documentos y Convenios (documents)
--- 15. Recursos Humanos y Contrataciones (hr_records)
--- 16. Base de Conocimiento Institucional (knowledge)
--- 17. Usuarios y Perfiles (users)
+-- ESTE SCRIPT ES 100% IDEMPOTENTE:
+-- 1. Se puede ejecutar en un Supabase NUEVO o en uno que YA CONTENGA DATOS.
+-- 2. No elimina ni destruye datos existentes.
+-- 3. Agrega automáticamente todas las columnas necesarias que pudieran faltar.
+-- 4. Convierte y flexibiliza restricciones para evitar errores por tipos de fecha o campos nulos.
+-- 5. Configura políticas RLS (Row Level Security) abiertas para desarrollo/operación continua.
+-- 6. Configura el trigger automático de creación de perfil al registrarse usuarios (handle_new_user).
+-- 7. Crea la función RPC de verificación segura de correo (check_email_registered).
+-- 8. Contiene todos los datos iniciales y modificables de TODOS los programas de salud (CPU, REHAB, IMAG, MAS_AMA, RESP, MAYORES).
 -- ==============================================================================
 
--- 1. Extensiones
+-- 1. Extensiones requeridas
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ==============================================================================
--- 2. TABLAS PRINCIPALES (TODAS CON COLUMNA data JSONB PARA MÁXIMA FLEXIBILIDAD)
+-- 2. CREACIÓN DE TABLAS (SI NO EXISTEN)
 -- ==============================================================================
 
--- Tabla: users (Perfiles de usuario)
+-- Tabla: users
 CREATE TABLE IF NOT EXISTS public.users (
   id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
+  name TEXT,
   email TEXT,
   role TEXT DEFAULT 'referente',
   title TEXT DEFAULT 'Referente de Programas de Salud',
@@ -52,26 +43,18 @@ CREATE TABLE IF NOT EXISTS public.users (
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Asegurar columnas si la tabla ya existía previamente
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone_prefix TEXT DEFAULT 'CL +56';
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS instagram TEXT;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Chile';
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS photo_url TEXT;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS budget_year INTEGER DEFAULT 2026;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
-
--- Tabla: health_programs (Programas de salud comunal)
+-- Tabla: health_programs
 CREATE TABLE IF NOT EXISTS public.health_programs (
   id TEXT PRIMARY KEY,
   code TEXT,
-  name TEXT NOT NULL,
+  name TEXT,
   short_name TEXT,
   description TEXT,
   referente TEXT,
   email TEXT,
   telefono TEXT,
   presupuesto_total NUMERIC DEFAULT 0,
+  annual_budget NUMERIC DEFAULT 0,
   presupuesto_ejecutado NUMERIC DEFAULT 0,
   presupuesto_comprometido NUMERIC DEFAULT 0,
   color TEXT DEFAULT '#0284c7',
@@ -81,17 +64,19 @@ CREATE TABLE IF NOT EXISTS public.health_programs (
   status TEXT DEFAULT 'activo',
   year INTEGER DEFAULT 2026,
   data JSONB DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: establishments (Centros de salud, CESFAM, CECOSF, SAR, DISAM)
+-- Tabla: establishments
 CREATE TABLE IF NOT EXISTS public.establishments (
   id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
+  name TEXT,
   short_name TEXT,
   code TEXT,
   type TEXT DEFAULT 'CESFAM',
   commune TEXT DEFAULT 'Quilicura',
+  comuna TEXT DEFAULT 'Quilicura',
   address TEXT,
   phone TEXT,
   director TEXT,
@@ -100,22 +85,19 @@ CREATE TABLE IF NOT EXISTS public.establishments (
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
-ALTER TABLE public.establishments ADD COLUMN IF NOT EXISTS commune TEXT DEFAULT 'Quilicura';
-ALTER TABLE public.establishments ADD COLUMN IF NOT EXISTS comuna TEXT DEFAULT 'Quilicura';
-ALTER TABLE public.establishments ADD COLUMN IF NOT EXISTS short_name TEXT;
-ALTER TABLE public.establishments ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
+-- Tabla: tasks
 CREATE TABLE IF NOT EXISTS public.tasks (
   id TEXT PRIMARY KEY,
   program_id TEXT,
-  title TEXT NOT NULL,
+  title TEXT,
   description TEXT,
   assigned_to TEXT,
   assigned_role TEXT,
   establishment_id TEXT,
-  start_date DATE,
-  due_date DATE,
-  end_date DATE,
-  status TEXT DEFAULT 'pendiente',
+  start_date TEXT,
+  due_date TEXT,
+  end_date TEXT,
+  status TEXT DEFAULT 'por_hacer',
   priority TEXT DEFAULT 'media',
   progress NUMERIC DEFAULT 0,
   category TEXT DEFAULT 'General',
@@ -128,154 +110,290 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: purchases (Licitaciones, compras y adquisiciones)
+-- Tabla: purchases
 CREATE TABLE IF NOT EXISTS public.purchases (
   id TEXT PRIMARY KEY,
   program_id TEXT,
-  title TEXT NOT NULL,
-  supplier TEXT,
+  title TEXT,
   amount NUMERIC DEFAULT 0,
+  estimated_amount NUMERIC DEFAULT 0,
+  actual_amount NUMERIC,
+  supplier TEXT,
   stage TEXT DEFAULT 'solicitud',
-  status TEXT DEFAULT 'en_proceso',
+  status TEXT DEFAULT 'solicitado',
+  code TEXT,
+  description TEXT,
+  justification TEXT,
+  priority TEXT DEFAULT 'media',
+  category TEXT DEFAULT 'general',
+  request_date TEXT,
+  date TEXT,
+  orden_compra TEXT,
   oc_number TEXT,
+  folio_mercado_publico TEXT,
+  responsible_user TEXT,
   reception_status TEXT DEFAULT 'pendiente',
   invoice_status TEXT DEFAULT 'sin_factura',
   establishment_id TEXT,
-  date DATE,
   notes TEXT,
   data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: meetings (Reuniones, acuerdos y compromisos)
+-- Tabla: meetings
 CREATE TABLE IF NOT EXISTS public.meetings (
   id TEXT PRIMARY KEY,
   program_id TEXT,
-  title TEXT NOT NULL,
-  date DATE,
+  title TEXT,
+  date TEXT,
+  time TEXT,
   start_time TEXT,
   end_time TEXT,
   location TEXT,
   type TEXT DEFAULT 'ordinaria',
   status TEXT DEFAULT 'programada',
+  summary TEXT,
+  notes TEXT,
   attendees JSONB DEFAULT '[]'::jsonb,
+  participants JSONB DEFAULT '[]'::jsonb,
   agreements JSONB DEFAULT '[]'::jsonb,
   commitments JSONB DEFAULT '[]'::jsonb,
-  notes TEXT,
   data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: indicators (Metas sanitarias, cortes trimestrales e indicadores)
+-- Tabla: indicators
 CREATE TABLE IF NOT EXISTS public.indicators (
   id TEXT PRIMARY KEY,
   program_id TEXT,
-  name TEXT NOT NULL,
   code TEXT,
+  name TEXT,
   description TEXT,
-  baseline NUMERIC DEFAULT 0,
-  target NUMERIC DEFAULT 0,
+  target_value NUMERIC DEFAULT 100,
   current_value NUMERIC DEFAULT 0,
   unit TEXT DEFAULT '%',
+  periodicity TEXT DEFAULT 'mensual',
   frequency TEXT DEFAULT 'trimestral',
+  weight NUMERIC DEFAULT 1,
+  good_threshold NUMERIC DEFAULT 85,
+  warning_threshold NUMERIC DEFAULT 70,
   source TEXT,
   status TEXT DEFAULT 'en_curso',
   measurements JSONB DEFAULT '[]'::jsonb,
+  cuts JSONB DEFAULT '[]'::jsonb,
+  cutoff_date TEXT,
+  componente TEXT,
+  objetivo_especifico TEXT,
+  corte_seleccionado TEXT,
+  numerador_descripcion TEXT,
+  numerador_valor NUMERIC,
+  numerador_tipo TEXT,
+  denominador_descripcion TEXT,
+  denominador_valor NUMERIC,
+  denominador_tipo TEXT,
+  peso_relativo NUMERIC,
+  medio_verificacion_numerador TEXT,
+  medio_verificacion_denominador TEXT,
+  meta_cumplimiento_anual_texto TEXT,
+  meta_cumplimiento_anual_porcentaje NUMERIC,
+  annual_target NUMERIC,
+  annual_target_quantity NUMERIC,
+  period_target NUMERIC,
+  period_target_quantity NUMERIC,
+  current_result NUMERIC,
+  current_result_quantity NUMERIC,
+  corte1 JSONB,
+  corte2 JSONB,
+  corte3 JSONB,
+  last_updated TIMESTAMPTZ,
   data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: contacts (Directorio institucional y referentes)
+-- Tabla: contacts
 CREATE TABLE IF NOT EXISTS public.contacts (
   id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  last_name TEXT DEFAULT '',
+  program_id TEXT,
+  program_ids TEXT[],
+  name TEXT,
+  last_name TEXT,
   role TEXT,
   institution TEXT,
   department TEXT,
   email TEXT,
   phone TEXT,
-  mobile TEXT,
+  contact_type TEXT DEFAULT 'referente_comunal',
+  category TEXT DEFAULT 'general',
   is_frequent BOOLEAN DEFAULT false,
   is_active BOOLEAN DEFAULT true,
-  program_ids JSONB DEFAULT '[]'::jsonb,
   data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: questions (Consultas, dudas técnicas y resoluciones)
+-- Tabla: documents
+CREATE TABLE IF NOT EXISTS public.documents (
+  id TEXT PRIMARY KEY,
+  program_id TEXT,
+  program_ids TEXT[],
+  title TEXT,
+  description TEXT,
+  category TEXT DEFAULT 'convenio',
+  document_type TEXT DEFAULT 'convenio',
+  document_number TEXT,
+  issuing_body TEXT,
+  institution TEXT,
+  document_date TEXT,
+  valid_from TEXT,
+  valid_until TEXT,
+  expiration_date TEXT,
+  status TEXT DEFAULT 'vigente',
+  file_name TEXT,
+  file_size TEXT,
+  upload_date TEXT,
+  uploaded_by TEXT,
+  responsible TEXT,
+  version TEXT,
+  versions JSONB DEFAULT '[]'::jsonb,
+  tags TEXT[],
+  notes TEXT,
+  archived BOOLEAN DEFAULT false,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Tabla: questions
 CREATE TABLE IF NOT EXISTS public.questions (
   id TEXT PRIMARY KEY,
   program_id TEXT,
-  question TEXT NOT NULL,
+  asked_by TEXT,
+  category TEXT DEFAULT 'orientacion_tecnica',
+  question TEXT,
+  title TEXT,
+  body TEXT,
   answer TEXT,
   status TEXT DEFAULT 'pendiente',
   priority TEXT DEFAULT 'media',
-  author TEXT,
-  assigned_to TEXT,
+  date TEXT,
+  due_date TEXT,
+  answered_by TEXT,
+  answered_date TEXT,
   follow_ups JSONB DEFAULT '[]'::jsonb,
+  answers JSONB DEFAULT '[]'::jsonb,
+  for_next_meeting BOOLEAN DEFAULT false,
+  meeting_id TEXT,
+  task_id TEXT,
+  closed_reason TEXT,
+  resolved_date TEXT,
+  final_answer TEXT,
+  source_of_response TEXT,
+  attachments JSONB DEFAULT '[]'::jsonb,
   data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: alerts (Alertas y notificaciones)
-CREATE TABLE IF NOT EXISTS public.alerts (
+-- Tabla: hr_records
+CREATE TABLE IF NOT EXISTS public.hr_records (
   id TEXT PRIMARY KEY,
   program_id TEXT,
-  type TEXT DEFAULT 'presupuesto',
-  title TEXT NOT NULL,
-  message TEXT,
-  severity TEXT DEFAULT 'media',
-  dismissed BOOLEAN DEFAULT false,
-  resolved BOOLEAN DEFAULT false,
+  establishment_id TEXT,
+  name TEXT,
+  rut TEXT,
+  role TEXT,
+  profession TEXT,
+  hours NUMERIC DEFAULT 44,
+  weekly_hours NUMERIC DEFAULT 44,
+  contract_type TEXT DEFAULT 'Contrata',
+  monthly_cost NUMERIC DEFAULT 0,
+  monthly_salary NUMERIC DEFAULT 0,
+  start_date TEXT,
+  end_date TEXT,
+  status TEXT DEFAULT 'activo',
+  archived BOOLEAN DEFAULT false,
   data JSONB DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: financial_periods (Partidas presupuestarias anuales)
+-- Tabla: knowledge
+CREATE TABLE IF NOT EXISTS public.knowledge (
+  id TEXT PRIMARY KEY,
+  program_id TEXT,
+  program_ids TEXT[],
+  title TEXT,
+  category TEXT DEFAULT 'General',
+  content TEXT,
+  tags TEXT[],
+  author TEXT,
+  date TEXT,
+  is_pinned BOOLEAN DEFAULT false,
+  is_featured BOOLEAN DEFAULT false,
+  archived BOOLEAN DEFAULT false,
+  deleted_at TIMESTAMPTZ,
+  deleted_by TEXT,
+  attachments JSONB DEFAULT '[]'::jsonb,
+  history JSONB DEFAULT '[]'::jsonb,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Tabla: financial_periods
 CREATE TABLE IF NOT EXISTS public.financial_periods (
   id TEXT PRIMARY KEY,
-  program_id TEXT NOT NULL,
+  program_id TEXT,
+  period_name TEXT,
+  name TEXT,
   year INTEGER DEFAULT 2026,
-  period_name TEXT DEFAULT 'Presupuesto Inicial',
-  assigned_budget NUMERIC DEFAULT 0,
-  modifications NUMERIC DEFAULT 0,
-  executed_amount NUMERIC DEFAULT 0,
-  committed_amount NUMERIC DEFAULT 0,
-  projected_amount NUMERIC DEFAULT 0,
-  cutoff_date DATE,
+  month TEXT,
+  allocated_budget NUMERIC DEFAULT 0,
+  executed_budget NUMERIC DEFAULT 0,
+  committed_budget NUMERIC DEFAULT 0,
+  available_budget NUMERIC DEFAULT 0,
+  presupuesto_asignado NUMERIC DEFAULT 0,
+  presupuesto_ejecutado NUMERIC DEFAULT 0,
+  presupuesto_comprometido NUMERIC DEFAULT 0,
+  saldo_disponible NUMERIC DEFAULT 0,
+  rendicion_enviada BOOLEAN DEFAULT false,
+  rendicion_aprobada BOOLEAN DEFAULT false,
+  fecha_rendicion TEXT,
+  observaciones_rendicion TEXT,
   notes TEXT,
   data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: budget_components (Subtítulos 21 - Personal, 22 - Bienes y Servicios, 29 - Capital)
+-- Tabla: budget_components
 CREATE TABLE IF NOT EXISTS public.budget_components (
   id TEXT PRIMARY KEY,
-  program_id TEXT NOT NULL,
-  name TEXT NOT NULL,
+  program_id TEXT,
+  name TEXT,
   budget_to_spend NUMERIC DEFAULT 0,
   spent_amount NUMERIC DEFAULT 0,
+  allocated NUMERIC DEFAULT 0,
+  executed NUMERIC DEFAULT 0,
   category TEXT DEFAULT 'Personal',
+  description TEXT,
+  subtitle TEXT,
   data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: budget_2025_notes (Notas referenciales y ejecución presupuestaria de años anteriores)
+-- Tabla: budget_2025_notes
 CREATE TABLE IF NOT EXISTS public.budget_2025_notes (
   id TEXT PRIMARY KEY,
-  program_id TEXT NOT NULL,
-  year INTEGER DEFAULT 2025,
+  program_id TEXT,
   note TEXT,
   author TEXT,
-  date DATE,
+  date TEXT,
+  type TEXT DEFAULT 'presupuesto',
   budget_amount NUMERIC DEFAULT 0,
   executed_amount NUMERIC DEFAULT 0,
   fulfillment_rate NUMERIC DEFAULT 0,
@@ -284,173 +402,351 @@ CREATE TABLE IF NOT EXISTS public.budget_2025_notes (
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: emails (Requerimientos, correos y oficios de salud)
+-- Tabla: emails
 CREATE TABLE IF NOT EXISTS public.emails (
   id TEXT PRIMARY KEY,
   program_id TEXT,
-  subject TEXT NOT NULL,
+  from_email TEXT,
+  to_email TEXT,
   sender TEXT,
   recipient TEXT,
-  date DATE,
+  subject TEXT,
+  body TEXT,
   status TEXT DEFAULT 'pendiente',
   priority TEXT DEFAULT 'media',
-  type TEXT DEFAULT 'recibido',
-  notes TEXT,
+  type TEXT DEFAULT 'correo',
+  category TEXT DEFAULT 'oficial',
+  date TEXT,
+  due_date TEXT,
   archived BOOLEAN DEFAULT false,
+  attachments JSONB DEFAULT '[]'::jsonb,
   data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: documents (Repositorio de convenios, resoluciones y documentos institucionales)
-CREATE TABLE IF NOT EXISTS public.documents (
+-- Tabla: alerts
+CREATE TABLE IF NOT EXISTS public.alerts (
   id TEXT PRIMARY KEY,
   program_id TEXT,
-  program_ids JSONB DEFAULT '[]'::jsonb,
-  title TEXT NOT NULL,
-  description TEXT,
-  category TEXT DEFAULT 'convenio',
-  document_type TEXT DEFAULT 'convenio',
-  document_number TEXT,
-  status TEXT DEFAULT 'vigente',
-  file_name TEXT,
-  file_size TEXT,
-  upload_date TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
-  uploaded_by TEXT,
-  archived BOOLEAN DEFAULT false,
+  type TEXT,
+  severity TEXT DEFAULT 'media',
+  title TEXT,
+  message TEXT,
   data JSONB DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Tabla: hr_records (Recursos humanos, dotación y contratas)
-CREATE TABLE IF NOT EXISTS public.hr_records (
+-- Tabla: audit_logs
+CREATE TABLE IF NOT EXISTS public.audit_logs (
   id TEXT PRIMARY KEY,
-  program_id TEXT,
-  establishment_id TEXT,
-  name TEXT NOT NULL,
-  rut TEXT,
-  role TEXT,
-  hours NUMERIC DEFAULT 44,
-  contract_type TEXT DEFAULT 'Contrata',
-  monthly_cost NUMERIC DEFAULT 0,
-  start_date DATE,
-  end_date DATE,
-  status TEXT DEFAULT 'activo',
-  archived BOOLEAN DEFAULT false,
-  data JSONB DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- Tabla: knowledge (Base de conocimiento y criterios técnicos)
-CREATE TABLE IF NOT EXISTS public.knowledge (
-  id TEXT PRIMARY KEY,
-  program_id TEXT,
-  program_ids JSONB DEFAULT '[]'::jsonb,
-  title TEXT NOT NULL,
-  category TEXT DEFAULT 'General',
-  content TEXT,
-  tags JSONB DEFAULT '[]'::jsonb,
-  author TEXT,
-  date TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
-  archived BOOLEAN DEFAULT false,
-  data JSONB DEFAULT '{}'::jsonb,
+  user_name TEXT,
+  entity_type TEXT,
+  entity_id TEXT,
+  action TEXT,
+  details TEXT,
+  metadata JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- ==============================================================================
--- 3. MIGRACIÓN PREVENTIVA DE COLUMNAS (Para tablas que hayan existido previamente)
+-- 3. MIGRACIONES SEGURAS PARA BASES DE DATOS EXISTENTES (ADD COLUMN IF NOT EXISTS)
 -- ==============================================================================
+
+-- Health Programs
+ALTER TABLE public.health_programs ADD COLUMN IF NOT EXISTS short_name TEXT;
+ALTER TABLE public.health_programs ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.health_programs ADD COLUMN IF NOT EXISTS telefono TEXT;
+ALTER TABLE public.health_programs ADD COLUMN IF NOT EXISTS annual_budget NUMERIC DEFAULT 0;
+ALTER TABLE public.health_programs ADD COLUMN IF NOT EXISTS presupuesto_total NUMERIC DEFAULT 0;
+ALTER TABLE public.health_programs ADD COLUMN IF NOT EXISTS presupuesto_ejecutado NUMERIC DEFAULT 0;
+ALTER TABLE public.health_programs ADD COLUMN IF NOT EXISTS presupuesto_comprometido NUMERIC DEFAULT 0;
+ALTER TABLE public.health_programs ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.health_programs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now());
+ALTER TABLE public.health_programs ALTER COLUMN name DROP NOT NULL;
+
+-- Establishments
+ALTER TABLE public.establishments ADD COLUMN IF NOT EXISTS short_name TEXT;
+ALTER TABLE public.establishments ADD COLUMN IF NOT EXISTS commune TEXT DEFAULT 'Quilicura';
+ALTER TABLE public.establishments ADD COLUMN IF NOT EXISTS comuna TEXT DEFAULT 'Quilicura';
+ALTER TABLE public.establishments ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
+ALTER TABLE public.establishments ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.establishments ALTER COLUMN name DROP NOT NULL;
+
+-- Purchases
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE public.purchases ALTER COLUMN title DROP NOT NULL;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS code TEXT;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS justification TEXT;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS amount NUMERIC DEFAULT 0;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS estimated_amount NUMERIC DEFAULT 0;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS actual_amount NUMERIC;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS supplier TEXT;
+ALTER TABLE public.purchases ALTER COLUMN supplier DROP NOT NULL;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS stage TEXT DEFAULT 'solicitud';
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'solicitado';
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS priority TEXT DEFAULT 'media';
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'general';
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS request_date TEXT;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS orden_compra TEXT;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS oc_number TEXT;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS folio_mercado_publico TEXT;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS responsible_user TEXT;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS reception_status TEXT DEFAULT 'pendiente';
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS invoice_status TEXT DEFAULT 'sin_factura';
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS establishment_id TEXT;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- Meetings
+ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE public.meetings ALTER COLUMN title DROP NOT NULL;
+ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS time TEXT;
+ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS start_time TEXT;
+ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS end_time TEXT;
+ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS summary TEXT;
+ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS attendees JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS participants JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS agreements JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS commitments JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.meetings ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- Tasks
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE public.tasks ALTER COLUMN title DROP NOT NULL;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS assigned_to TEXT;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS assigned_role TEXT;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS establishment_id TEXT;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS start_date TEXT;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS due_date TEXT;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS end_date TEXT;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS checklist JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS budget_assigned NUMERIC DEFAULT 0;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS milestone BOOLEAN DEFAULT false;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS progress NUMERIC DEFAULT 0;
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'General';
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- Indicators
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.indicators ALTER COLUMN name DROP NOT NULL;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS code TEXT;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS target_value NUMERIC DEFAULT 100;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS current_value NUMERIC DEFAULT 0;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS periodicity TEXT DEFAULT 'mensual';
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS weight NUMERIC DEFAULT 1;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS good_threshold NUMERIC DEFAULT 85;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS warning_threshold NUMERIC DEFAULT 70;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS cuts JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS cutoff_date TEXT;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS componente TEXT;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS objetivo_especifico TEXT;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS corte_seleccionado TEXT;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS numerador_descripcion TEXT;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS numerador_valor NUMERIC;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS numerador_tipo TEXT;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS denominador_descripcion TEXT;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS denominador_valor NUMERIC;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS denominador_tipo TEXT;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS peso_relativo NUMERIC;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS medio_verificacion_numerador TEXT;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS medio_verificacion_denominador TEXT;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS meta_cumplimiento_anual_texto TEXT;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS meta_cumplimiento_anual_porcentaje NUMERIC;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS annual_target NUMERIC;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS annual_target_quantity NUMERIC;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS period_target NUMERIC;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS period_target_quantity NUMERIC;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS current_result NUMERIC;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS current_result_quantity NUMERIC;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS corte1 JSONB;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS corte2 JSONB;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS corte3 JSONB;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS last_updated TIMESTAMPTZ;
+ALTER TABLE public.indicators ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- Contacts
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.contacts ALTER COLUMN name DROP NOT NULL;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS last_name TEXT;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS institution TEXT;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS contact_type TEXT DEFAULT 'referente_comunal';
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS program_ids TEXT[];
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS is_frequent BOOLEAN DEFAULT false;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- Documents
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE public.documents ALTER COLUMN title DROP NOT NULL;
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS program_ids TEXT[];
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT 'convenio';
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS document_number TEXT;
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS file_name TEXT;
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS file_size TEXT;
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS upload_date TEXT;
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS uploaded_by TEXT;
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false;
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS versions JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.documents ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- Questions
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS question TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS body TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS answer TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS due_date TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS answered_by TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS answered_date TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS follow_ups JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS for_next_meeting BOOLEAN DEFAULT false;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS meeting_id TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS task_id TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS closed_reason TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS resolved_date TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS final_answer TEXT;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- HR Records
+ALTER TABLE public.hr_records ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.hr_records ALTER COLUMN name DROP NOT NULL;
+ALTER TABLE public.hr_records ADD COLUMN IF NOT EXISTS hours NUMERIC DEFAULT 44;
+ALTER TABLE public.hr_records ADD COLUMN IF NOT EXISTS weekly_hours NUMERIC DEFAULT 44;
+ALTER TABLE public.hr_records ADD COLUMN IF NOT EXISTS monthly_cost NUMERIC DEFAULT 0;
+ALTER TABLE public.hr_records ADD COLUMN IF NOT EXISTS monthly_salary NUMERIC DEFAULT 0;
+ALTER TABLE public.hr_records ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false;
+ALTER TABLE public.hr_records ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- Knowledge
+ALTER TABLE public.knowledge ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE public.knowledge ALTER COLUMN title DROP NOT NULL;
+ALTER TABLE public.knowledge ADD COLUMN IF NOT EXISTS program_ids TEXT[];
+ALTER TABLE public.knowledge ADD COLUMN IF NOT EXISTS author TEXT;
+ALTER TABLE public.knowledge ADD COLUMN IF NOT EXISTS date TEXT;
+ALTER TABLE public.knowledge ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT false;
+ALTER TABLE public.knowledge ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT false;
+ALTER TABLE public.knowledge ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false;
+ALTER TABLE public.knowledge ADD COLUMN IF NOT EXISTS history JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.knowledge ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- Financial Periods
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS period_name TEXT;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS allocated_budget NUMERIC DEFAULT 0;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS executed_budget NUMERIC DEFAULT 0;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS committed_budget NUMERIC DEFAULT 0;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS available_budget NUMERIC DEFAULT 0;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS presupuesto_asignado NUMERIC DEFAULT 0;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS presupuesto_ejecutado NUMERIC DEFAULT 0;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS presupuesto_comprometido NUMERIC DEFAULT 0;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS saldo_disponible NUMERIC DEFAULT 0;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS month TEXT;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS rendicion_enviada BOOLEAN DEFAULT false;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS rendicion_aprobada BOOLEAN DEFAULT false;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS fecha_rendicion TEXT;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS observaciones_rendicion TEXT;
+ALTER TABLE public.financial_periods ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- Budget Components
+ALTER TABLE public.budget_components ADD COLUMN IF NOT EXISTS budget_to_spend NUMERIC DEFAULT 0;
+ALTER TABLE public.budget_components ADD COLUMN IF NOT EXISTS spent_amount NUMERIC DEFAULT 0;
+ALTER TABLE public.budget_components ADD COLUMN IF NOT EXISTS allocated NUMERIC DEFAULT 0;
+ALTER TABLE public.budget_components ADD COLUMN IF NOT EXISTS executed NUMERIC DEFAULT 0;
+ALTER TABLE public.budget_components ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'Personal';
+ALTER TABLE public.budget_components ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.budget_components ADD COLUMN IF NOT EXISTS subtitle TEXT;
+ALTER TABLE public.budget_components ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- Budget 2025 Notes
+ALTER TABLE public.budget_2025_notes ADD COLUMN IF NOT EXISTS note TEXT;
+ALTER TABLE public.budget_2025_notes ADD COLUMN IF NOT EXISTS author TEXT;
+ALTER TABLE public.budget_2025_notes ADD COLUMN IF NOT EXISTS date TEXT;
+ALTER TABLE public.budget_2025_notes ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'presupuesto';
+ALTER TABLE public.budget_2025_notes ADD COLUMN IF NOT EXISTS budget_amount NUMERIC DEFAULT 0;
+ALTER TABLE public.budget_2025_notes ADD COLUMN IF NOT EXISTS executed_amount NUMERIC DEFAULT 0;
+ALTER TABLE public.budget_2025_notes ADD COLUMN IF NOT EXISTS fulfillment_rate NUMERIC DEFAULT 0;
+ALTER TABLE public.budget_2025_notes ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- Emails
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS from_email TEXT;
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS to_email TEXT;
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS sender TEXT;
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS recipient TEXT;
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS subject TEXT;
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS body TEXT;
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS due_date TEXT;
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS date TEXT;
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false;
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS priority TEXT DEFAULT 'media';
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'correo';
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'oficial';
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS attachments JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.emails ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- Users
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.users ALTER COLUMN name DROP NOT NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone_prefix TEXT DEFAULT 'CL +56';
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS instagram TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Chile';
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS photo_url TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS budget_year INTEGER DEFAULT 2026;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+
+-- ==============================================================================
+-- 4. SEGURIDAD RLS (ROW LEVEL SECURITY) Y POLÍTICAS DE ACCESO
+-- ==============================================================================
+
 DO $$
 DECLARE
-  t TEXT;
-  tbls TEXT[] := ARRAY[
-    'users', 'health_programs', 'establishments', 'tasks', 
-    'purchases', 'meetings', 'indicators', 'contacts', 
-    'questions', 'alerts', 'financial_periods', 'budget_components',
-    'budget_2025_notes', 'emails', 'documents', 'hr_records', 'knowledge'
+  t text;
+  tables text[] := ARRAY[
+    'users',
+    'health_programs',
+    'establishments',
+    'tasks',
+    'purchases',
+    'meetings',
+    'indicators',
+    'contacts',
+    'documents',
+    'questions',
+    'hr_records',
+    'knowledge',
+    'financial_periods',
+    'budget_components',
+    'budget_2025_notes',
+    'emails',
+    'alerts',
+    'audit_logs'
   ];
 BEGIN
-  -- Asegurar columna data JSONB en todas las tablas
-  FOREACH t IN ARRAY tbls LOOP
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'data') THEN
-      EXECUTE format('ALTER TABLE public.%I ADD COLUMN data JSONB DEFAULT ''{}''::jsonb', t);
-    END IF;
-  END LOOP;
-
-  -- Asegurar tipo TEXT en IDs si previamente se habían definido como UUID
-  FOREACH t IN ARRAY tbls LOOP
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'id' AND data_type = 'uuid') THEN
-      EXECUTE format('ALTER TABLE public.%I ALTER COLUMN id TYPE TEXT USING id::text', t);
-    END IF;
-  END LOOP;
-
-  -- Columnas de perfiles de usuario
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone_prefix TEXT DEFAULT 'CL +56';
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS instagram TEXT;
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Chile';
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS budget_year INTEGER DEFAULT 2026;
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS health_service TEXT DEFAULT 'Servicio de Salud Metropolitano Norte';
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS photo_url TEXT;
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS avatar TEXT;
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS comuna TEXT DEFAULT 'Quilicura (DISAM)';
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS establishment TEXT DEFAULT 'Dirección de Salud / Comunal';
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS title TEXT DEFAULT 'Referente de Programas de Salud';
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'referente';
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
-  ALTER TABLE public.users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now());
-END $$;
-
--- ==============================================================================
--- 4. SEGURIDAD Y PERMISOS ROW LEVEL SECURITY (RLS)
--- ==============================================================================
-DO $$
-DECLARE
-  t TEXT;
-  tbls TEXT[] := ARRAY[
-    'users', 'health_programs', 'establishments', 'tasks', 
-    'purchases', 'meetings', 'indicators', 'contacts', 
-    'questions', 'alerts', 'financial_periods', 'budget_components',
-    'budget_2025_notes', 'emails', 'documents', 'hr_records', 'knowledge'
-  ];
-BEGIN
-  FOREACH t IN ARRAY tbls LOOP
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
-    EXECUTE format('DROP POLICY IF EXISTS "Acceso total a %I" ON public.%I', t, t);
-    EXECUTE format('CREATE POLICY "Acceso total a %I" ON public.%I FOR ALL TO anon, authenticated USING (true) WITH CHECK (true)', t, t);
+  FOREACH t IN ARRAY tables
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', t);
+    EXECUTE format('DROP POLICY IF EXISTS "allow_all_anon" ON public.%I;', t);
+    EXECUTE format('CREATE POLICY "allow_all_anon" ON public.%I FOR ALL TO anon USING (true) WITH CHECK (true);', t);
+    EXECUTE format('DROP POLICY IF EXISTS "allow_all_auth" ON public.%I;', t);
+    EXECUTE format('CREATE POLICY "allow_all_auth" ON public.%I FOR ALL TO authenticated USING (true) WITH CHECK (true);', t);
   END LOOP;
 END $$;
 
--- ==============================================================================
--- 5. SUSCRIPCIÓN EN TIEMPO REAL (SUPABASE REALTIME)
--- ==============================================================================
-DO $$
-BEGIN
-  ALTER PUBLICATION supabase_realtime ADD TABLE 
-    public.users, 
-    public.health_programs, 
-    public.establishments, 
-    public.tasks, 
-    public.purchases, 
-    public.meetings, 
-    public.indicators, 
-    public.contacts, 
-    public.questions, 
-    public.alerts, 
-    public.financial_periods, 
-    public.budget_components,
-    public.budget_2025_notes,
-    public.emails,
-    public.documents,
-    public.hr_records,
-    public.knowledge;
-EXCEPTION
-  WHEN others THEN NULL;
-END $$;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
 
 -- ==============================================================================
--- 6. SINCRONIZACIÓN AUTOMÁTICA AUTH -> PUBLIC.USERS
+-- 5. TRIGGER AUTH -> PUBLIC.USERS Y FUNCIÓN RPC PARA CHECK DE EMAIL
 -- ==============================================================================
+
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -507,7 +803,6 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- Función RPC para verificar de forma segura si un correo está registrado
 CREATE OR REPLACE FUNCTION public.check_email_registered(p_email TEXT)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -520,7 +815,6 @@ BEGIN
     RETURN FALSE;
   END IF;
 
-  -- 1. Verificar si existe en auth.users
   IF EXISTS (
     SELECT 1 FROM auth.users 
     WHERE LOWER(TRIM(email)) = v_clean_email
@@ -528,7 +822,6 @@ BEGIN
     RETURN TRUE;
   END IF;
 
-  -- 2. Verificar si existe en public.users
   IF EXISTS (
     SELECT 1 FROM public.users 
     WHERE LOWER(TRIM(email)) = v_clean_email
@@ -542,107 +835,2384 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.check_email_registered(TEXT) TO anon, authenticated, service_role;
 
--- Sincronizar usuarios existentes en auth.users si no estaban en public.users
-INSERT INTO public.users (id, name, email, role, title, comuna, establishment, health_service, avatar, phone, phone_prefix, instagram, country, budget_year)
-SELECT
-  id::text,
-  COALESCE(raw_user_meta_data->>'full_name', raw_user_meta_data->>'name', split_part(email, '@', 1)),
-  email,
-  COALESCE(raw_user_meta_data->>'role', 'referente'),
-  COALESCE(raw_user_meta_data->>'title', 'Referente de Programas de Salud'),
-  COALESCE(raw_user_meta_data->>'comuna', 'Quilicura (DISAM)'),
-  COALESCE(raw_user_meta_data->>'establishment', 'Dirección de Salud / Comunal'),
-  COALESCE(raw_user_meta_data->>'healthService', 'Servicio de Salud Metropolitano Norte'),
-  UPPER(SUBSTRING(COALESCE(raw_user_meta_data->>'name', email) FROM 1 FOR 1)),
-  COALESCE(raw_user_meta_data->>'phone', ''),
-  COALESCE(raw_user_meta_data->>'phonePrefix', 'CL +56'),
-  COALESCE(raw_user_meta_data->>'instagram', ''),
-  COALESCE(raw_user_meta_data->>'country', 'Chile'),
-  COALESCE((raw_user_meta_data->>'budgetYear')::integer, 2026)
-FROM auth.users
-ON CONFLICT (id) DO NOTHING;
-
 -- ==============================================================================
--- 7. DATOS BASE Y PROGRAMAS DE SALUD DE QUILICURA
+-- 6. DATOS INICIALES Y SEMILLAS DE TODOS LOS PROGRAMAS
 -- ==============================================================================
-INSERT INTO public.health_programs (id, code, name, short_name, description, referente, presupuesto_total, color, icon_name, target_population, coverage, status, year)
-VALUES
-  ('praps_cpu', 'CPU', 'PRAPS Cuidados Paliativos Universales', 'Cuidados Paliativos (CPU)', 'Atención integral médica y psicosocial en etapa avanzada en la red APS de Quilicura.', 'Klaus Bauer (DISAM Quilicura)', 68500000, '#0284c7', 'HeartHandshake', '1200', 88, 'activo', 2026),
-  ('praps_rehab', 'REHAB', 'PRAPS Rehabilitación Integral', 'Rehabilitación Integral', 'Salas de Rehabilitación Base Comunitaria (RBC), atención kinésica y fonoaudiológica.', 'Klaus Bauer (DISAM Quilicura)', 112400000, '#059669', 'Activity', '3400', 78, 'activo', 2026),
-  ('praps_imagenes', 'IMAG', 'PRAPS Imágenes Diagnósticas en APS', 'Imágenes Diagnósticas', 'Resolutividad diagnóstica: ecografías mamografías y radiografías.', 'Klaus Bauer (DISAM Quilicura)', 84200000, '#7c3aed', 'ScanLine', '5000', 91, 'activo', 2026),
-  ('praps_mas_ama', 'MAS_AMA', 'PRAPS MAS AMA (Más Adultos Mayores)', 'MAS Adultos Mayores', 'Talleres de estimulación motora cognitiva y estilos de vida saludables.', 'Klaus Bauer (DISAM Quilicura)', 95800000, '#d97706', 'SmilePlus', '2800', 85, 'activo', 2026),
-  ('praps_respiratoria', 'RESP', 'PRAPS Salud Respiratoria', 'Salud Respiratoria (ERA/IRA)', 'Salas ERA/IRA en CESFAM control de asma EPOC y refuerzo invernal.', 'Klaus Bauer (DISAM Quilicura)', 145000000, '#0891b2', 'Stethoscope', '6500', 94, 'activo', 2026),
-  ('prog_personas_mayores', 'MAYORES', 'Programa Personas Mayores', 'Personas Mayores (ELEAM / EMPAM)', 'Coordinación comunal para personas mayores postulación ELEAM y EMPAM.', 'Klaus Bauer (DISAM Quilicura)', 78000000, '#4f46e5', 'UsersRound', '4200', 82, 'activo', 2026)
+
+
+-- --- PROGRAMAS DE SALUD ---
+
+INSERT INTO public.health_programs (id, code, name, short_name, description, referente, email, telefono, presupuesto_total, annual_budget, presupuesto_ejecutado, presupuesto_comprometido, color, icon_name, target_population, coverage, status, year, data)
+VALUES ('praps_cpu', 'CPU', 'PRAPS Cuidados Paliativos Universales', 'Cuidados Paliativos (CPU)', 'Atención integral, médica, psicosocial y de alivio del dolor a personas en etapa avanzada de enfermedades oncológicas y no oncológicas en la red APS de Quilicura.', 'Klaus Bauer (DISAM Quilicura)', NULL, NULL, 68500000, 68500000, 0, 0, '#0284c7', 'HeartHandshake', 'Pacientes con patologías terminales y sus familias cuidadoras', 0, 'activo', 2026, '{"id":"praps_cpu","code":"CPU","name":"PRAPS Cuidados Paliativos Universales","shortName":"Cuidados Paliativos (CPU)","description":"Atención integral, médica, psicosocial y de alivio del dolor a personas en etapa avanzada de enfermedades oncológicas y no oncológicas en la red APS de Quilicura.","referente":"Klaus Bauer (DISAM Quilicura)","color":"#0284c7","iconName":"HeartHandshake","targetPopulation":"Pacientes con patologías terminales y sus familias cuidadoras","annualBudget":68500000}'::jsonb)
 ON CONFLICT (id) DO UPDATE SET
-  name = EXCLUDED.name,
-  short_name = EXCLUDED.short_name,
-  description = EXCLUDED.description,
-  referente = EXCLUDED.referente;
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    description = EXCLUDED.description,
+    referente = EXCLUDED.referente,
+    email = EXCLUDED.email,
+    telefono = EXCLUDED.telefono,
+    presupuesto_total = EXCLUDED.presupuesto_total,
+    annual_budget = EXCLUDED.annual_budget,
+    presupuesto_ejecutado = EXCLUDED.presupuesto_ejecutado,
+    presupuesto_comprometido = EXCLUDED.presupuesto_comprometido,
+    color = EXCLUDED.color,
+    icon_name = EXCLUDED.icon_name,
+    target_population = EXCLUDED.target_population,
+    coverage = EXCLUDED.coverage,
+    status = EXCLUDED.status,
+    year = EXCLUDED.year,
+    data = EXCLUDED.data;
 
-INSERT INTO public.establishments (id, name, short_name, code, type, commune, address, phone, director, active)
-VALUES
-  ('cesfam_salvador_allende', 'CESFAM Dr. Salvador Allende Gossens', 'CESFAM Salvador Allende', 'CESFAM-01', 'CESFAM', 'Quilicura', 'Av. Las Torres 620', '+56 2 2827 8600', 'Dra. María Paz González', true),
-  ('cesfam_manuel_bustos', 'CESFAM Manuel Bustos Huerta', 'CESFAM Manuel Bustos', 'CESFAM-02', 'CESFAM', 'Quilicura', 'San Martín 1001', '+56 2 2827 8700', 'Dr. Carlos Mendoza Silva', true),
-  ('cesfam_rodrigo_rojas', 'CESFAM Rodrigo Rojas de Negri', 'CESFAM Rodrigo Rojas', 'CESFAM-03', 'CESFAM', 'Quilicura', 'Av. Matta 450', '+56 2 2827 8800', 'Dra. Elena Sepúlveda', true),
-  ('cecosf_valle_luna', 'CECOSF Valle de la Luna', 'CECOSF Valle de la Luna', 'CECOSF-01', 'CECOSF', 'Quilicura', 'Pasaje Los Astros 120', '+56 2 2827 8910', 'Klgo. Roberto Flores', true),
-  ('sar_quilicura', 'SAR Quilicura (Servicio de Urgencia)', 'SAR Quilicura', 'SAR-01', 'SAR', 'Quilicura', 'Av. Las Torres 650', '+56 2 2827 8650', 'Dr. Andrés Valenzuela', true),
-  ('disam_central', 'Dirección de Salud Municipal Quilicura', 'DISAM Quilicura', 'DISAM-00', 'DISAM', 'Quilicura', 'José Francisco Vergara 450', '+56 2 2827 8500', 'Director/a Comunal de Salud', true)
+INSERT INTO public.health_programs (id, code, name, short_name, description, referente, email, telefono, presupuesto_total, annual_budget, presupuesto_ejecutado, presupuesto_comprometido, color, icon_name, target_population, coverage, status, year, data)
+VALUES ('praps_rehab', 'REHAB', 'PRAPS Rehabilitación Integral', 'Rehabilitación Integral', 'Fortalecimiento de Salas de Rehabilitación Base Comunitaria (RBC), atención kinésica, fonoaudiológica, terapia ocupacional y entrega de ayudas técnicas.', 'Klaus Bauer (DISAM Quilicura)', NULL, NULL, 112400000, 112400000, 0, 0, '#059669', 'Activity', 'Personas con discapacidad transitoria o permanente de Quilicura', 0, 'activo', 2026, '{"id":"praps_rehab","code":"REHAB","name":"PRAPS Rehabilitación Integral","shortName":"Rehabilitación Integral","description":"Fortalecimiento de Salas de Rehabilitación Base Comunitaria (RBC), atención kinésica, fonoaudiológica, terapia ocupacional y entrega de ayudas técnicas.","referente":"Klaus Bauer (DISAM Quilicura)","color":"#059669","iconName":"Activity","targetPopulation":"Personas con discapacidad transitoria o permanente de Quilicura","annualBudget":112400000}'::jsonb)
 ON CONFLICT (id) DO UPDATE SET
-  name = EXCLUDED.name,
-  short_name = EXCLUDED.short_name;
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    description = EXCLUDED.description,
+    referente = EXCLUDED.referente,
+    email = EXCLUDED.email,
+    telefono = EXCLUDED.telefono,
+    presupuesto_total = EXCLUDED.presupuesto_total,
+    annual_budget = EXCLUDED.annual_budget,
+    presupuesto_ejecutado = EXCLUDED.presupuesto_ejecutado,
+    presupuesto_comprometido = EXCLUDED.presupuesto_comprometido,
+    color = EXCLUDED.color,
+    icon_name = EXCLUDED.icon_name,
+    target_population = EXCLUDED.target_population,
+    coverage = EXCLUDED.coverage,
+    status = EXCLUDED.status,
+    year = EXCLUDED.year,
+    data = EXCLUDED.data;
 
--- Perfil de Referente Comunal (Klaus Bauer)
-INSERT INTO public.users (
-  id, name, email, role, title, comuna, establishment, health_service, 
-  avatar, photo_url, phone, phone_prefix, instagram, country, budget_year, data
-)
-VALUES (
-  'usr_klaus_bauer',
-  'Klaus Bauer',
-  'kbauergrandon@gmail.com',
-  'referente',
-  'Referente de Programas de Salud',
-  'Quilicura (DISAM)',
-  'Dirección de Salud / Comunal',
-  'Servicio de Salud Metropolitano Norte',
-  'KB',
-  NULL,
-  NULL,
-  'CL +56',
-  NULL,
-  'Chile',
-  2026,
-  '{}'::jsonb
-)
-ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.health_programs (id, code, name, short_name, description, referente, email, telefono, presupuesto_total, annual_budget, presupuesto_ejecutado, presupuesto_comprometido, color, icon_name, target_population, coverage, status, year, data)
+VALUES ('praps_imagenes', 'IMAG', 'PRAPS Imágenes Diagnósticas en APS', 'Imágenes Diagnósticas', 'Resolutividad diagnóstica en APS mediante ecografías gineco-obstétricas, abdominales, mamografías en convenio y radiografías osteopulmonares.', 'Klaus Bauer (DISAM Quilicura)', NULL, NULL, 84200000, 84200000, 0, 0, '#7c3aed', 'ScanLine', 'Población inscrita Fonasa con indicación de estudio ecográfico o mamográfico', 0, 'activo', 2026, '{"id":"praps_imagenes","code":"IMAG","name":"PRAPS Imágenes Diagnósticas en APS","shortName":"Imágenes Diagnósticas","description":"Resolutividad diagnóstica en APS mediante ecografías gineco-obstétricas, abdominales, mamografías en convenio y radiografías osteopulmonares.","referente":"Klaus Bauer (DISAM Quilicura)","color":"#7c3aed","iconName":"ScanLine","targetPopulation":"Población inscrita Fonasa con indicación de estudio ecográfico o mamográfico","annualBudget":84200000}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    description = EXCLUDED.description,
+    referente = EXCLUDED.referente,
+    email = EXCLUDED.email,
+    telefono = EXCLUDED.telefono,
+    presupuesto_total = EXCLUDED.presupuesto_total,
+    annual_budget = EXCLUDED.annual_budget,
+    presupuesto_ejecutado = EXCLUDED.presupuesto_ejecutado,
+    presupuesto_comprometido = EXCLUDED.presupuesto_comprometido,
+    color = EXCLUDED.color,
+    icon_name = EXCLUDED.icon_name,
+    target_population = EXCLUDED.target_population,
+    coverage = EXCLUDED.coverage,
+    status = EXCLUDED.status,
+    year = EXCLUDED.year,
+    data = EXCLUDED.data;
 
--- Sincronizar metadata en auth.users y vincular UUID si existe cuenta de autenticación
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'auth' AND table_name = 'users') THEN
-    -- Si el usuario ya existe en auth.users, sincronizar en public.users con su UID auténtico sin sobreescribir datos personalizados
-    INSERT INTO public.users (
-      id, name, email, role, title, comuna, establishment, health_service,
-      avatar, phone, phone_prefix, instagram, country, budget_year
-    )
-    SELECT 
-      id::text,
-      COALESCE(raw_user_meta_data->>'full_name', raw_user_meta_data->>'name', 'Klaus Bauer'),
-      email,
-      'referente',
-      'Referente de Programas de Salud',
-      'Quilicura (DISAM)',
-      'Dirección de Salud / Comunal',
-      'Servicio de Salud Metropolitano Norte',
-      'KB',
-      COALESCE(raw_user_meta_data->>'phone', ''),
-      COALESCE(raw_user_meta_data->>'phonePrefix', 'CL +56'),
-      COALESCE(raw_user_meta_data->>'instagram', ''),
-      COALESCE(raw_user_meta_data->>'country', 'Chile'),
-      2026
-    FROM auth.users
-    WHERE email ILIKE 'kbauergrandon@gmail.com'
-    ON CONFLICT (id) DO NOTHING;
-  END IF;
-END $$;
+INSERT INTO public.health_programs (id, code, name, short_name, description, referente, email, telefono, presupuesto_total, annual_budget, presupuesto_ejecutado, presupuesto_comprometido, color, icon_name, target_population, coverage, status, year, data)
+VALUES ('praps_mas_ama', 'MAS_AMA', 'PRAPS MAS AMA (Más Adulto Mayor Autovalente)', 'MAS Adultos Mayores', 'Talleres de estimulación motora, estimulación cognitiva, estilos de vida saludables y redes comunitarias de personas mayores en Quilicura.', 'Klaus Bauer (DISAM Quilicura)', NULL, NULL, 95800000, 95800000, 0, 0, '#d97706', 'SmilePlus', 'Personas mayores de 60 años autovalentes con y sin riesgo', 0, 'activo', 2026, '{"id":"praps_mas_ama","code":"MAS_AMA","name":"PRAPS MAS AMA (Más Adulto Mayor Autovalente)","shortName":"MAS Adultos Mayores","description":"Talleres de estimulación motora, estimulación cognitiva, estilos de vida saludables y redes comunitarias de personas mayores en Quilicura.","referente":"Klaus Bauer (DISAM Quilicura)","color":"#d97706","iconName":"SmilePlus","targetPopulation":"Personas mayores de 60 años autovalentes con y sin riesgo","annualBudget":95800000}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    description = EXCLUDED.description,
+    referente = EXCLUDED.referente,
+    email = EXCLUDED.email,
+    telefono = EXCLUDED.telefono,
+    presupuesto_total = EXCLUDED.presupuesto_total,
+    annual_budget = EXCLUDED.annual_budget,
+    presupuesto_ejecutado = EXCLUDED.presupuesto_ejecutado,
+    presupuesto_comprometido = EXCLUDED.presupuesto_comprometido,
+    color = EXCLUDED.color,
+    icon_name = EXCLUDED.icon_name,
+    target_population = EXCLUDED.target_population,
+    coverage = EXCLUDED.coverage,
+    status = EXCLUDED.status,
+    year = EXCLUDED.year,
+    data = EXCLUDED.data;
 
+INSERT INTO public.health_programs (id, code, name, short_name, description, referente, email, telefono, presupuesto_total, annual_budget, presupuesto_ejecutado, presupuesto_comprometido, color, icon_name, target_population, coverage, status, year, data)
+VALUES ('praps_respiratoria', 'RESP', 'PRAPS Salud Respiratoria', 'Salud Respiratoria (ERA/IRA)', 'Salas ERA/IRA en CESFAM, control de asma, EPOC, infecciones respiratorias agudas y refuerzo de contingencia invernal.', 'Klaus Bauer (DISAM Quilicura)', NULL, NULL, 145000000, 145000000, 0, 0, '#0891b2', 'Stethoscope', 'Población infantil, adultos y adultos mayores con patología respiratoria aguda o crónica', 0, 'activo', 2026, '{"id":"praps_respiratoria","code":"RESP","name":"PRAPS Salud Respiratoria","shortName":"Salud Respiratoria (ERA/IRA)","description":"Salas ERA/IRA en CESFAM, control de asma, EPOC, infecciones respiratorias agudas y refuerzo de contingencia invernal.","referente":"Klaus Bauer (DISAM Quilicura)","hasSubprograms":true,"subprograms":["Campaña de Invierno"],"color":"#0891b2","iconName":"Stethoscope","targetPopulation":"Población infantil, adultos y adultos mayores con patología respiratoria aguda o crónica","annualBudget":145000000}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    description = EXCLUDED.description,
+    referente = EXCLUDED.referente,
+    email = EXCLUDED.email,
+    telefono = EXCLUDED.telefono,
+    presupuesto_total = EXCLUDED.presupuesto_total,
+    annual_budget = EXCLUDED.annual_budget,
+    presupuesto_ejecutado = EXCLUDED.presupuesto_ejecutado,
+    presupuesto_comprometido = EXCLUDED.presupuesto_comprometido,
+    color = EXCLUDED.color,
+    icon_name = EXCLUDED.icon_name,
+    target_population = EXCLUDED.target_population,
+    coverage = EXCLUDED.coverage,
+    status = EXCLUDED.status,
+    year = EXCLUDED.year,
+    data = EXCLUDED.data;
+
+INSERT INTO public.health_programs (id, code, name, short_name, description, referente, email, telefono, presupuesto_total, annual_budget, presupuesto_ejecutado, presupuesto_comprometido, color, icon_name, target_population, coverage, status, year, data)
+VALUES ('prog_personas_mayores', 'MAYORES', 'Programa Personas Mayores', 'Personas Mayores (ELEAM / EMPAM)', 'Gestión y coordinación de la red comunal para personas mayores, seguimiento y tramitación de postulaciones ELEAM y control de cobertura EMPAM en CESFAM.', 'Klaus Bauer (DISAM Quilicura)', NULL, NULL, 78000000, 78000000, 0, 0, '#4f46e5', 'UsersRound', 'Población adulta mayor comunal de Quilicura', 0, 'activo', 2026, '{"id":"prog_personas_mayores","code":"MAYORES","name":"Programa Personas Mayores","shortName":"Personas Mayores (ELEAM / EMPAM)","description":"Gestión y coordinación de la red comunal para personas mayores, seguimiento y tramitación de postulaciones ELEAM y control de cobertura EMPAM en CESFAM.","referente":"Klaus Bauer (DISAM Quilicura)","color":"#4f46e5","iconName":"UsersRound","targetPopulation":"Población adulta mayor comunal de Quilicura","annualBudget":78000000}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    description = EXCLUDED.description,
+    referente = EXCLUDED.referente,
+    email = EXCLUDED.email,
+    telefono = EXCLUDED.telefono,
+    presupuesto_total = EXCLUDED.presupuesto_total,
+    annual_budget = EXCLUDED.annual_budget,
+    presupuesto_ejecutado = EXCLUDED.presupuesto_ejecutado,
+    presupuesto_comprometido = EXCLUDED.presupuesto_comprometido,
+    color = EXCLUDED.color,
+    icon_name = EXCLUDED.icon_name,
+    target_population = EXCLUDED.target_population,
+    coverage = EXCLUDED.coverage,
+    status = EXCLUDED.status,
+    year = EXCLUDED.year,
+    data = EXCLUDED.data;
+
+
+-- --- ESTABLECIMIENTOS DE LA RED APS ---
+
+INSERT INTO public.establishments (id, name, short_name, code, type, commune, comuna, address, phone, director, active, data)
+VALUES ('comunal', 'Comunal', 'Comunal', 'COM', 'COMUNAL', 'Quilicura', 'Quilicura', 'Quilicura', '+56 2 2827 8500', 'Director/a Comunal', true, '{"id":"comunal","code":"COM","name":"Comunal","type":"COMUNAL"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    code = EXCLUDED.code,
+    type = EXCLUDED.type,
+    commune = EXCLUDED.commune,
+    comuna = EXCLUDED.comuna,
+    address = EXCLUDED.address,
+    phone = EXCLUDED.phone,
+    director = EXCLUDED.director,
+    active = EXCLUDED.active,
+    data = EXCLUDED.data;
+
+INSERT INTO public.establishments (id, name, short_name, code, type, commune, comuna, address, phone, director, active, data)
+VALUES ('cesfam_mbh', 'Cesfam MBH', 'Cesfam MBH', 'MBH', 'CESFAM', 'Quilicura', 'Quilicura', 'Av. Las Torres 625, Quilicura', '+56 2 2827 8500', 'Director/a Comunal', true, '{"id":"cesfam_mbh","code":"MBH","name":"Cesfam MBH","type":"CESFAM","address":"Av. Las Torres 625, Quilicura"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    code = EXCLUDED.code,
+    type = EXCLUDED.type,
+    commune = EXCLUDED.commune,
+    comuna = EXCLUDED.comuna,
+    address = EXCLUDED.address,
+    phone = EXCLUDED.phone,
+    director = EXCLUDED.director,
+    active = EXCLUDED.active,
+    data = EXCLUDED.data;
+
+INSERT INTO public.establishments (id, name, short_name, code, type, commune, comuna, address, phone, director, active, data)
+VALUES ('cesfam_psag', 'Cesfam PSAG', 'Cesfam PSAG', 'PSAG', 'CESFAM', 'Quilicura', 'Quilicura', 'San Luis Norte 1800, Quilicura', '+56 2 2827 8500', 'Director/a Comunal', true, '{"id":"cesfam_psag","code":"PSAG","name":"Cesfam PSAG","type":"CESFAM","address":"San Luis Norte 1800, Quilicura"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    code = EXCLUDED.code,
+    type = EXCLUDED.type,
+    commune = EXCLUDED.commune,
+    comuna = EXCLUDED.comuna,
+    address = EXCLUDED.address,
+    phone = EXCLUDED.phone,
+    director = EXCLUDED.director,
+    active = EXCLUDED.active,
+    data = EXCLUDED.data;
+
+INSERT INTO public.establishments (id, name, short_name, code, type, commune, comuna, address, phone, director, active, data)
+VALUES ('cesfam_ifc', 'Cesfam IFC', 'Cesfam IFC', 'IFC', 'CESFAM', 'Quilicura', 'Quilicura', 'Av. Manuel Antonio Matta 1219, Quilicura', '+56 2 2827 8500', 'Director/a Comunal', true, '{"id":"cesfam_ifc","code":"IFC","name":"Cesfam IFC","type":"CESFAM","address":"Av. Manuel Antonio Matta 1219, Quilicura"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    code = EXCLUDED.code,
+    type = EXCLUDED.type,
+    commune = EXCLUDED.commune,
+    comuna = EXCLUDED.comuna,
+    address = EXCLUDED.address,
+    phone = EXCLUDED.phone,
+    director = EXCLUDED.director,
+    active = EXCLUDED.active,
+    data = EXCLUDED.data;
+
+INSERT INTO public.establishments (id, name, short_name, code, type, commune, comuna, address, phone, director, active, data)
+VALUES ('cesfam_mur', 'Cesfam MUR', 'Cesfam MUR', 'MUR', 'CESFAM', 'Quilicura', 'Quilicura', 'Quilicura', '+56 2 2827 8500', 'Director/a Comunal', true, '{"id":"cesfam_mur","code":"MUR","name":"Cesfam MUR","type":"CESFAM","address":"Quilicura"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    code = EXCLUDED.code,
+    type = EXCLUDED.type,
+    commune = EXCLUDED.commune,
+    comuna = EXCLUDED.comuna,
+    address = EXCLUDED.address,
+    phone = EXCLUDED.phone,
+    director = EXCLUDED.director,
+    active = EXCLUDED.active,
+    data = EXCLUDED.data;
+
+INSERT INTO public.establishments (id, name, short_name, code, type, commune, comuna, address, phone, director, active, data)
+VALUES ('cecosf_pdl', 'CECOSF PDL', 'CECOSF PDL', 'PDL', 'CECOSF', 'Quilicura', 'Quilicura', 'Quilicura', '+56 2 2827 8500', 'Director/a Comunal', true, '{"id":"cecosf_pdl","code":"PDL","name":"CECOSF PDL","type":"CECOSF","address":"Quilicura"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    code = EXCLUDED.code,
+    type = EXCLUDED.type,
+    commune = EXCLUDED.commune,
+    comuna = EXCLUDED.comuna,
+    address = EXCLUDED.address,
+    phone = EXCLUDED.phone,
+    director = EXCLUDED.director,
+    active = EXCLUDED.active,
+    data = EXCLUDED.data;
+
+INSERT INTO public.establishments (id, name, short_name, code, type, commune, comuna, address, phone, director, active, data)
+VALUES ('cecosf_lf', 'CECOSF LF', 'CECOSF LF', 'LF', 'CECOSF', 'Quilicura', 'Quilicura', 'Quilicura', '+56 2 2827 8500', 'Director/a Comunal', true, '{"id":"cecosf_lf","code":"LF","name":"CECOSF LF","type":"CECOSF","address":"Quilicura"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    code = EXCLUDED.code,
+    type = EXCLUDED.type,
+    commune = EXCLUDED.commune,
+    comuna = EXCLUDED.comuna,
+    address = EXCLUDED.address,
+    phone = EXCLUDED.phone,
+    director = EXCLUDED.director,
+    active = EXCLUDED.active,
+    data = EXCLUDED.data;
+
+INSERT INTO public.establishments (id, name, short_name, code, type, commune, comuna, address, phone, director, active, data)
+VALUES ('cecosf_bph', 'CECOSF BPH', 'CECOSF BPH', 'BPH', 'CECOSF', 'Quilicura', 'Quilicura', 'Quilicura', '+56 2 2827 8500', 'Director/a Comunal', true, '{"id":"cecosf_bph","code":"BPH","name":"CECOSF BPH","type":"CECOSF","address":"Quilicura"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    code = EXCLUDED.code,
+    type = EXCLUDED.type,
+    commune = EXCLUDED.commune,
+    comuna = EXCLUDED.comuna,
+    address = EXCLUDED.address,
+    phone = EXCLUDED.phone,
+    director = EXCLUDED.director,
+    active = EXCLUDED.active,
+    data = EXCLUDED.data;
+
+INSERT INTO public.establishments (id, name, short_name, code, type, commune, comuna, address, phone, director, active, data)
+VALUES ('desam', 'DESAM', 'DESAM', 'DESAM', 'DESAM', 'Quilicura', 'Quilicura', 'José Francisco Vergara 450, Quilicura', '+56 2 2827 8500', 'Director/a Comunal', true, '{"id":"desam","code":"DESAM","name":"DESAM","type":"DESAM","address":"José Francisco Vergara 450, Quilicura"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    short_name = EXCLUDED.short_name,
+    code = EXCLUDED.code,
+    type = EXCLUDED.type,
+    commune = EXCLUDED.commune,
+    comuna = EXCLUDED.comuna,
+    address = EXCLUDED.address,
+    phone = EXCLUDED.phone,
+    director = EXCLUDED.director,
+    active = EXCLUDED.active,
+    data = EXCLUDED.data;
+
+
+-- --- INDICADORES Y METAS SANITARIAS ---
+
+INSERT INTO public.indicators (id, program_id, code, name, description, target_value, current_value, unit, periodicity, weight, good_threshold, warning_threshold, measurements, cuts, last_updated, componente, objetivo_especifico, corte_seleccionado, numerador_descripcion, numerador_valor, numerador_tipo, denominador_descripcion, denominador_valor, denominador_tipo, peso_relativo, medio_verificacion_numerador, medio_verificacion_denominador, meta_cumplimiento_anual_texto, meta_cumplimiento_anual_porcentaje, annual_target, annual_target_quantity, period_target, period_target_quantity, current_result, current_result_quantity, source, cutoff_date, corte1, corte2, corte3, data)
+VALUES ('ind_cpu_01', 'praps_cpu', 'Indicador 1', 'Cobertura de Ingresos a Cuidados Paliativos No Oncológicos', 'Porcentaje de pacientes con indicación de ingreso a CPU no oncológico con evaluación integral domiciliaria antes de 15 días.', 90, 78.5, '%', 'Mensual', 50, 85, 70, '[{"id":"m_cpu_1","indicatorId":"ind_cpu_01","period":"2026-04","date":"2026-04-30","result":84,"target":90,"registeredBy":"Klaus Bauer"},{"id":"m_cpu_2","indicatorId":"ind_cpu_01","period":"2026-05","date":"2026-05-31","result":88.2,"target":90,"registeredBy":"Klaus Bauer"},{"id":"m_cpu_3","indicatorId":"ind_cpu_01","period":"2026-06","date":"2026-06-30","result":82,"target":90,"registeredBy":"Klaus Bauer"},{"id":"m_cpu_4","indicatorId":"ind_cpu_01","period":"2026-07","date":"2026-07-31","result":78.5,"target":90,"registeredBy":"Klaus Bauer"}]'::jsonb, '[]'::jsonb, '2026-09-24T11:31:31.697Z', NULL, 'Porcentaje de pacientes con indicación de ingreso a CPU no oncológico con evaluación integral domiciliaria antes de 15 días.', '1° corte', NULL, NULL, 'porcentaje', NULL, NULL, 'porcentaje', 50, NULL, NULL, NULL, 90, 90, NULL, 90, NULL, 78.5, NULL, 'REM A05 y Rayen APS', '2026-07-31', '{"target":90,"result":78.5,"date":"2026-07-31"}'::jsonb, '{"target":90,"result":88,"date":"2026-12-31"}'::jsonb, NULL, '{"id":"ind_cpu_01","programId":"praps_cpu","code":"Indicador 1","name":"Cobertura de Ingresos a Cuidados Paliativos No Oncológicos","description":"Porcentaje de pacientes con indicación de ingreso a CPU no oncológico con evaluación integral domiciliaria antes de 15 días.","periodicity":"Mensual","pesoRelativo":50,"annualTarget":90,"periodTarget":90,"currentResult":78.5,"unit":"%","direction":"higher_is_better","cutoffDate":"2026-07-31","responsible":"Dra. Marcela Vidal R.","source":"REM A05 y Rayen APS","notes":"Atrasos en sector San Luis por licencias médicas del equipo de apoyo.","corte1":{"target":90,"result":78.5,"date":"2026-07-31"},"corte2":{"target":90,"result":88,"date":"2026-12-31"},"measurements":[{"id":"m_cpu_1","indicatorId":"ind_cpu_01","period":"2026-04","date":"2026-04-30","result":84,"target":90,"registeredBy":"Klaus Bauer"},{"id":"m_cpu_2","indicatorId":"ind_cpu_01","period":"2026-05","date":"2026-05-31","result":88.2,"target":90,"registeredBy":"Klaus Bauer"},{"id":"m_cpu_3","indicatorId":"ind_cpu_01","period":"2026-06","date":"2026-06-30","result":82,"target":90,"registeredBy":"Klaus Bauer"},{"id":"m_cpu_4","indicatorId":"ind_cpu_01","period":"2026-07","date":"2026-07-31","result":78.5,"target":90,"registeredBy":"Klaus Bauer"}],"createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-08-02T11:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    target_value = EXCLUDED.target_value,
+    current_value = EXCLUDED.current_value,
+    unit = EXCLUDED.unit,
+    periodicity = EXCLUDED.periodicity,
+    weight = EXCLUDED.weight,
+    good_threshold = EXCLUDED.good_threshold,
+    warning_threshold = EXCLUDED.warning_threshold,
+    measurements = EXCLUDED.measurements,
+    cuts = EXCLUDED.cuts,
+    last_updated = EXCLUDED.last_updated,
+    componente = EXCLUDED.componente,
+    objetivo_especifico = EXCLUDED.objetivo_especifico,
+    corte_seleccionado = EXCLUDED.corte_seleccionado,
+    numerador_descripcion = EXCLUDED.numerador_descripcion,
+    numerador_valor = EXCLUDED.numerador_valor,
+    numerador_tipo = EXCLUDED.numerador_tipo,
+    denominador_descripcion = EXCLUDED.denominador_descripcion,
+    denominador_valor = EXCLUDED.denominador_valor,
+    denominador_tipo = EXCLUDED.denominador_tipo,
+    peso_relativo = EXCLUDED.peso_relativo,
+    medio_verificacion_numerador = EXCLUDED.medio_verificacion_numerador,
+    medio_verificacion_denominador = EXCLUDED.medio_verificacion_denominador,
+    meta_cumplimiento_anual_texto = EXCLUDED.meta_cumplimiento_anual_texto,
+    meta_cumplimiento_anual_porcentaje = EXCLUDED.meta_cumplimiento_anual_porcentaje,
+    annual_target = EXCLUDED.annual_target,
+    annual_target_quantity = EXCLUDED.annual_target_quantity,
+    period_target = EXCLUDED.period_target,
+    period_target_quantity = EXCLUDED.period_target_quantity,
+    current_result = EXCLUDED.current_result,
+    current_result_quantity = EXCLUDED.current_result_quantity,
+    source = EXCLUDED.source,
+    cutoff_date = EXCLUDED.cutoff_date,
+    corte1 = EXCLUDED.corte1,
+    corte2 = EXCLUDED.corte2,
+    corte3 = EXCLUDED.corte3,
+    data = EXCLUDED.data;
+
+INSERT INTO public.indicators (id, program_id, code, name, description, target_value, current_value, unit, periodicity, weight, good_threshold, warning_threshold, measurements, cuts, last_updated, componente, objetivo_especifico, corte_seleccionado, numerador_descripcion, numerador_valor, numerador_tipo, denominador_descripcion, denominador_valor, denominador_tipo, peso_relativo, medio_verificacion_numerador, medio_verificacion_denominador, meta_cumplimiento_anual_texto, meta_cumplimiento_anual_porcentaje, annual_target, annual_target_quantity, period_target, period_target_quantity, current_result, current_result_quantity, source, cutoff_date, corte1, corte2, corte3, data)
+VALUES ('ind_cpu_02', 'praps_cpu', 'Indicador 2', 'Plan de Cuidados y Visita Médica Mensual Activa', 'Pacientes ingresados con al menos 1 visita médica o de enfermería mensual registrada.', 95, 94.2, '%', 'Mensual', 50, 85, 70, '[{"id":"m_cpu_21","indicatorId":"ind_cpu_02","period":"2026-06","date":"2026-06-30","result":93,"target":95,"registeredBy":"Klaus Bauer"},{"id":"m_cpu_22","indicatorId":"ind_cpu_02","period":"2026-07","date":"2026-07-31","result":94.2,"target":95,"registeredBy":"Klaus Bauer"}]'::jsonb, '[]'::jsonb, '2026-09-24T11:31:31.700Z', NULL, 'Pacientes ingresados con al menos 1 visita médica o de enfermería mensual registrada.', '1° corte', NULL, NULL, 'porcentaje', NULL, NULL, 'porcentaje', 50, NULL, NULL, NULL, 95, 95, NULL, 95, NULL, 94.2, NULL, 'Registro Clínico CPU', '2026-07-31', '{"target":95,"result":94.2,"date":"2026-07-31"}'::jsonb, '{"target":95,"result":95,"date":"2026-12-31"}'::jsonb, NULL, '{"id":"ind_cpu_02","programId":"praps_cpu","code":"Indicador 2","name":"Plan de Cuidados y Visita Médica Mensual Activa","description":"Pacientes ingresados con al menos 1 visita médica o de enfermería mensual registrada.","periodicity":"Mensual","pesoRelativo":50,"annualTarget":95,"periodTarget":95,"currentResult":94.2,"unit":"%","direction":"higher_is_better","cutoffDate":"2026-07-31","responsible":"E.U. Rodrigo Morales T.","source":"Registro Clínico CPU","notes":"Cumplimiento adecuado en la red.","corte1":{"target":95,"result":94.2,"date":"2026-07-31"},"corte2":{"target":95,"result":95,"date":"2026-12-31"},"measurements":[{"id":"m_cpu_21","indicatorId":"ind_cpu_02","period":"2026-06","date":"2026-06-30","result":93,"target":95,"registeredBy":"Klaus Bauer"},{"id":"m_cpu_22","indicatorId":"ind_cpu_02","period":"2026-07","date":"2026-07-31","result":94.2,"target":95,"registeredBy":"Klaus Bauer"}],"createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-08-02T11:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    target_value = EXCLUDED.target_value,
+    current_value = EXCLUDED.current_value,
+    unit = EXCLUDED.unit,
+    periodicity = EXCLUDED.periodicity,
+    weight = EXCLUDED.weight,
+    good_threshold = EXCLUDED.good_threshold,
+    warning_threshold = EXCLUDED.warning_threshold,
+    measurements = EXCLUDED.measurements,
+    cuts = EXCLUDED.cuts,
+    last_updated = EXCLUDED.last_updated,
+    componente = EXCLUDED.componente,
+    objetivo_especifico = EXCLUDED.objetivo_especifico,
+    corte_seleccionado = EXCLUDED.corte_seleccionado,
+    numerador_descripcion = EXCLUDED.numerador_descripcion,
+    numerador_valor = EXCLUDED.numerador_valor,
+    numerador_tipo = EXCLUDED.numerador_tipo,
+    denominador_descripcion = EXCLUDED.denominador_descripcion,
+    denominador_valor = EXCLUDED.denominador_valor,
+    denominador_tipo = EXCLUDED.denominador_tipo,
+    peso_relativo = EXCLUDED.peso_relativo,
+    medio_verificacion_numerador = EXCLUDED.medio_verificacion_numerador,
+    medio_verificacion_denominador = EXCLUDED.medio_verificacion_denominador,
+    meta_cumplimiento_anual_texto = EXCLUDED.meta_cumplimiento_anual_texto,
+    meta_cumplimiento_anual_porcentaje = EXCLUDED.meta_cumplimiento_anual_porcentaje,
+    annual_target = EXCLUDED.annual_target,
+    annual_target_quantity = EXCLUDED.annual_target_quantity,
+    period_target = EXCLUDED.period_target,
+    period_target_quantity = EXCLUDED.period_target_quantity,
+    current_result = EXCLUDED.current_result,
+    current_result_quantity = EXCLUDED.current_result_quantity,
+    source = EXCLUDED.source,
+    cutoff_date = EXCLUDED.cutoff_date,
+    corte1 = EXCLUDED.corte1,
+    corte2 = EXCLUDED.corte2,
+    corte3 = EXCLUDED.corte3,
+    data = EXCLUDED.data;
+
+INSERT INTO public.indicators (id, program_id, code, name, description, target_value, current_value, unit, periodicity, weight, good_threshold, warning_threshold, measurements, cuts, last_updated, componente, objetivo_especifico, corte_seleccionado, numerador_descripcion, numerador_valor, numerador_tipo, denominador_descripcion, denominador_valor, denominador_tipo, peso_relativo, medio_verificacion_numerador, medio_verificacion_denominador, meta_cumplimiento_anual_texto, meta_cumplimiento_anual_porcentaje, annual_target, annual_target_quantity, period_target, period_target_quantity, current_result, current_result_quantity, source, cutoff_date, corte1, corte2, corte3, data)
+VALUES ('ind_rehab_01', 'praps_rehab', 'Indicador 1', 'Tasa de Altas con Mejoría Funcional en Salas RBC', 'Porcentaje de usuarios egresados de salas RBC con ganancia en escala Barthel / FIM.', 80, 84.6, '%', 'Trimestral', 50, 85, 70, '[{"id":"m_rh_1","indicatorId":"ind_rehab_01","period":"2026-Q1","date":"2026-03-31","result":81,"target":80,"registeredBy":"Klaus Bauer"},{"id":"m_rh_2","indicatorId":"ind_rehab_01","period":"2026-Q2","date":"2026-06-30","result":84.6,"target":80,"registeredBy":"Klaus Bauer"}]'::jsonb, '[]'::jsonb, '2026-09-24T11:31:31.700Z', NULL, 'Porcentaje de usuarios egresados de salas RBC con ganancia en escala Barthel / FIM.', '1° corte', NULL, NULL, 'porcentaje', NULL, NULL, 'porcentaje', 50, NULL, NULL, NULL, 80, 80, NULL, 80, NULL, 84.6, NULL, 'REM P01 Sala RBC', '2026-06-30', '{"target":80,"result":84.6,"date":"2026-06-30"}'::jsonb, '{"target":80,"result":86,"date":"2026-12-31"}'::jsonb, NULL, '{"id":"ind_rehab_01","programId":"praps_rehab","code":"Indicador 1","name":"Tasa de Altas con Mejoría Funcional en Salas RBC","description":"Porcentaje de usuarios egresados de salas RBC con ganancia en escala Barthel / FIM.","periodicity":"Trimestral","pesoRelativo":50,"annualTarget":80,"periodTarget":80,"currentResult":84.6,"unit":"%","direction":"higher_is_better","cutoffDate":"2026-06-30","responsible":"Klgo. Felipe Santander V.","source":"REM P01 Sala RBC","notes":"Buen desempeño general en Manuel Bustos y Salvador Allende.","corte1":{"target":80,"result":84.6,"date":"2026-06-30"},"corte2":{"target":80,"result":86,"date":"2026-12-31"},"measurements":[{"id":"m_rh_1","indicatorId":"ind_rehab_01","period":"2026-Q1","date":"2026-03-31","result":81,"target":80,"registeredBy":"Klaus Bauer"},{"id":"m_rh_2","indicatorId":"ind_rehab_01","period":"2026-Q2","date":"2026-06-30","result":84.6,"target":80,"registeredBy":"Klaus Bauer"}],"createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-07-15T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    target_value = EXCLUDED.target_value,
+    current_value = EXCLUDED.current_value,
+    unit = EXCLUDED.unit,
+    periodicity = EXCLUDED.periodicity,
+    weight = EXCLUDED.weight,
+    good_threshold = EXCLUDED.good_threshold,
+    warning_threshold = EXCLUDED.warning_threshold,
+    measurements = EXCLUDED.measurements,
+    cuts = EXCLUDED.cuts,
+    last_updated = EXCLUDED.last_updated,
+    componente = EXCLUDED.componente,
+    objetivo_especifico = EXCLUDED.objetivo_especifico,
+    corte_seleccionado = EXCLUDED.corte_seleccionado,
+    numerador_descripcion = EXCLUDED.numerador_descripcion,
+    numerador_valor = EXCLUDED.numerador_valor,
+    numerador_tipo = EXCLUDED.numerador_tipo,
+    denominador_descripcion = EXCLUDED.denominador_descripcion,
+    denominador_valor = EXCLUDED.denominador_valor,
+    denominador_tipo = EXCLUDED.denominador_tipo,
+    peso_relativo = EXCLUDED.peso_relativo,
+    medio_verificacion_numerador = EXCLUDED.medio_verificacion_numerador,
+    medio_verificacion_denominador = EXCLUDED.medio_verificacion_denominador,
+    meta_cumplimiento_anual_texto = EXCLUDED.meta_cumplimiento_anual_texto,
+    meta_cumplimiento_anual_porcentaje = EXCLUDED.meta_cumplimiento_anual_porcentaje,
+    annual_target = EXCLUDED.annual_target,
+    annual_target_quantity = EXCLUDED.annual_target_quantity,
+    period_target = EXCLUDED.period_target,
+    period_target_quantity = EXCLUDED.period_target_quantity,
+    current_result = EXCLUDED.current_result,
+    current_result_quantity = EXCLUDED.current_result_quantity,
+    source = EXCLUDED.source,
+    cutoff_date = EXCLUDED.cutoff_date,
+    corte1 = EXCLUDED.corte1,
+    corte2 = EXCLUDED.corte2,
+    corte3 = EXCLUDED.corte3,
+    data = EXCLUDED.data;
+
+INSERT INTO public.indicators (id, program_id, code, name, description, target_value, current_value, unit, periodicity, weight, good_threshold, warning_threshold, measurements, cuts, last_updated, componente, objetivo_especifico, corte_seleccionado, numerador_descripcion, numerador_valor, numerador_tipo, denominador_descripcion, denominador_valor, denominador_tipo, peso_relativo, medio_verificacion_numerador, medio_verificacion_denominador, meta_cumplimiento_anual_texto, meta_cumplimiento_anual_porcentaje, annual_target, annual_target_quantity, period_target, period_target_quantity, current_result, current_result_quantity, source, cutoff_date, corte1, corte2, corte3, data)
+VALUES ('ind_rehab_02', 'praps_rehab', 'Indicador 2', 'Tiempo de Espera para Ingreso a Sala RBC (días)', 'Días promedio desde la derivación médica hasta la primera sesión de kinesiología o terapia ocupacional.', 20, 32, 'días', 'Mensual', 50, 85, 70, '[{"id":"m_rh_3","indicatorId":"ind_rehab_02","period":"2026-05","date":"2026-05-31","result":24,"target":20,"registeredBy":"Klaus Bauer"},{"id":"m_rh_4","indicatorId":"ind_rehab_02","period":"2026-06","date":"2026-06-30","result":28,"target":20,"registeredBy":"Klaus Bauer"},{"id":"m_rh_5","indicatorId":"ind_rehab_02","period":"2026-07","date":"2026-07-31","result":32,"target":20,"registeredBy":"Klaus Bauer"}]'::jsonb, '[]'::jsonb, '2026-09-24T11:31:31.700Z', NULL, 'Días promedio desde la derivación médica hasta la primera sesión de kinesiología o terapia ocupacional.', '1° corte', NULL, NULL, 'porcentaje', NULL, NULL, 'porcentaje', 50, NULL, NULL, NULL, 20, 20, NULL, 20, NULL, 32, NULL, 'Lista de Espera Local RBC', '2026-07-31', '{"target":20,"result":32,"date":"2026-07-31"}'::jsonb, '{"target":20,"result":22,"date":"2026-12-31"}'::jsonb, NULL, '{"id":"ind_rehab_02","programId":"praps_rehab","code":"Indicador 2","name":"Tiempo de Espera para Ingreso a Sala RBC (días)","description":"Días promedio desde la derivación médica hasta la primera sesión de kinesiología o terapia ocupacional.","periodicity":"Mensual","pesoRelativo":50,"annualTarget":20,"periodTarget":20,"currentResult":32,"unit":"días","direction":"lower_is_better","cutoffDate":"2026-07-31","responsible":"Klgo. Felipe Santander V.","source":"Lista de Espera Local RBC","notes":"En Irene Frei aumentó por la vacante pendiente de fonoaudiología y kinesiología.","corte1":{"target":20,"result":32,"date":"2026-07-31"},"corte2":{"target":20,"result":22,"date":"2026-12-31"},"measurements":[{"id":"m_rh_3","indicatorId":"ind_rehab_02","period":"2026-05","date":"2026-05-31","result":24,"target":20,"registeredBy":"Klaus Bauer"},{"id":"m_rh_4","indicatorId":"ind_rehab_02","period":"2026-06","date":"2026-06-30","result":28,"target":20,"registeredBy":"Klaus Bauer"},{"id":"m_rh_5","indicatorId":"ind_rehab_02","period":"2026-07","date":"2026-07-31","result":32,"target":20,"registeredBy":"Klaus Bauer"}],"createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-08-03T15:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    target_value = EXCLUDED.target_value,
+    current_value = EXCLUDED.current_value,
+    unit = EXCLUDED.unit,
+    periodicity = EXCLUDED.periodicity,
+    weight = EXCLUDED.weight,
+    good_threshold = EXCLUDED.good_threshold,
+    warning_threshold = EXCLUDED.warning_threshold,
+    measurements = EXCLUDED.measurements,
+    cuts = EXCLUDED.cuts,
+    last_updated = EXCLUDED.last_updated,
+    componente = EXCLUDED.componente,
+    objetivo_especifico = EXCLUDED.objetivo_especifico,
+    corte_seleccionado = EXCLUDED.corte_seleccionado,
+    numerador_descripcion = EXCLUDED.numerador_descripcion,
+    numerador_valor = EXCLUDED.numerador_valor,
+    numerador_tipo = EXCLUDED.numerador_tipo,
+    denominador_descripcion = EXCLUDED.denominador_descripcion,
+    denominador_valor = EXCLUDED.denominador_valor,
+    denominador_tipo = EXCLUDED.denominador_tipo,
+    peso_relativo = EXCLUDED.peso_relativo,
+    medio_verificacion_numerador = EXCLUDED.medio_verificacion_numerador,
+    medio_verificacion_denominador = EXCLUDED.medio_verificacion_denominador,
+    meta_cumplimiento_anual_texto = EXCLUDED.meta_cumplimiento_anual_texto,
+    meta_cumplimiento_anual_porcentaje = EXCLUDED.meta_cumplimiento_anual_porcentaje,
+    annual_target = EXCLUDED.annual_target,
+    annual_target_quantity = EXCLUDED.annual_target_quantity,
+    period_target = EXCLUDED.period_target,
+    period_target_quantity = EXCLUDED.period_target_quantity,
+    current_result = EXCLUDED.current_result,
+    current_result_quantity = EXCLUDED.current_result_quantity,
+    source = EXCLUDED.source,
+    cutoff_date = EXCLUDED.cutoff_date,
+    corte1 = EXCLUDED.corte1,
+    corte2 = EXCLUDED.corte2,
+    corte3 = EXCLUDED.corte3,
+    data = EXCLUDED.data;
+
+INSERT INTO public.indicators (id, program_id, code, name, description, target_value, current_value, unit, periodicity, weight, good_threshold, warning_threshold, measurements, cuts, last_updated, componente, objetivo_especifico, corte_seleccionado, numerador_descripcion, numerador_valor, numerador_tipo, denominador_descripcion, denominador_valor, denominador_tipo, peso_relativo, medio_verificacion_numerador, medio_verificacion_denominador, meta_cumplimiento_anual_texto, meta_cumplimiento_anual_porcentaje, annual_target, annual_target_quantity, period_target, period_target_quantity, current_result, current_result_quantity, source, cutoff_date, corte1, corte2, corte3, data)
+VALUES ('ind_imag_01', 'praps_imagenes', 'Indicador 1', 'Cumplimiento de Cupos de Mamografías en Convenio', 'Número de mamografías realizadas acumuladas a la fecha respecto a meta anual asignada SSMN.', 2400, 980, 'exámenes', 'Mensual', 100, 85, 70, '[{"id":"m_im_1","indicatorId":"ind_imag_01","period":"2026-04","date":"2026-04-30","result":580,"target":800,"registeredBy":"Klaus Bauer"},{"id":"m_im_2","indicatorId":"ind_imag_01","period":"2026-05","date":"2026-05-31","result":710,"target":1000,"registeredBy":"Klaus Bauer"},{"id":"m_im_3","indicatorId":"ind_imag_01","period":"2026-06","date":"2026-06-30","result":850,"target":1200,"registeredBy":"Klaus Bauer"},{"id":"m_im_4","indicatorId":"ind_imag_01","period":"2026-07","date":"2026-07-31","result":980,"target":1400,"registeredBy":"Klaus Bauer"}]'::jsonb, '[]'::jsonb, '2026-09-24T11:31:31.700Z', NULL, 'Número de mamografías realizadas acumuladas a la fecha respecto a meta anual asignada SSMN.', '1° corte', NULL, NULL, 'porcentaje', NULL, NULL, 'porcentaje', 100, NULL, NULL, NULL, 2400, 2400, NULL, 1400, NULL, 980, NULL, 'Informe de Facturación y Remesas Proveedor', '2026-07-31', '{"target":1400,"result":980,"date":"2026-07-31"}'::jsonb, '{"target":2400,"result":2150,"date":"2026-12-31"}'::jsonb, NULL, '{"id":"ind_imag_01","programId":"praps_imagenes","code":"Indicador 1","name":"Cumplimiento de Cupos de Mamografías en Convenio","description":"Número de mamografías realizadas acumuladas a la fecha respecto a meta anual asignada SSMN.","periodicity":"Mensual","pesoRelativo":100,"annualTarget":2400,"periodTarget":1400,"currentResult":980,"unit":"exámenes","direction":"higher_is_better","cutoffDate":"2026-07-31","responsible":"Referente Imágenes DISAM","source":"Informe de Facturación y Remesas Proveedor","notes":"Brecha de 420 exámenes. El proveedor tuvo fallas en el mamógrafo móvil durante mayo-junio.","corte1":{"target":1400,"result":980,"date":"2026-07-31"},"corte2":{"target":2400,"result":2150,"date":"2026-12-31"},"measurements":[{"id":"m_im_1","indicatorId":"ind_imag_01","period":"2026-04","date":"2026-04-30","result":580,"target":800,"registeredBy":"Klaus Bauer"},{"id":"m_im_2","indicatorId":"ind_imag_01","period":"2026-05","date":"2026-05-31","result":710,"target":1000,"registeredBy":"Klaus Bauer"},{"id":"m_im_3","indicatorId":"ind_imag_01","period":"2026-06","date":"2026-06-30","result":850,"target":1200,"registeredBy":"Klaus Bauer"},{"id":"m_im_4","indicatorId":"ind_imag_01","period":"2026-07","date":"2026-07-31","result":980,"target":1400,"registeredBy":"Klaus Bauer"}],"createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-08-04T12:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    target_value = EXCLUDED.target_value,
+    current_value = EXCLUDED.current_value,
+    unit = EXCLUDED.unit,
+    periodicity = EXCLUDED.periodicity,
+    weight = EXCLUDED.weight,
+    good_threshold = EXCLUDED.good_threshold,
+    warning_threshold = EXCLUDED.warning_threshold,
+    measurements = EXCLUDED.measurements,
+    cuts = EXCLUDED.cuts,
+    last_updated = EXCLUDED.last_updated,
+    componente = EXCLUDED.componente,
+    objetivo_especifico = EXCLUDED.objetivo_especifico,
+    corte_seleccionado = EXCLUDED.corte_seleccionado,
+    numerador_descripcion = EXCLUDED.numerador_descripcion,
+    numerador_valor = EXCLUDED.numerador_valor,
+    numerador_tipo = EXCLUDED.numerador_tipo,
+    denominador_descripcion = EXCLUDED.denominador_descripcion,
+    denominador_valor = EXCLUDED.denominador_valor,
+    denominador_tipo = EXCLUDED.denominador_tipo,
+    peso_relativo = EXCLUDED.peso_relativo,
+    medio_verificacion_numerador = EXCLUDED.medio_verificacion_numerador,
+    medio_verificacion_denominador = EXCLUDED.medio_verificacion_denominador,
+    meta_cumplimiento_anual_texto = EXCLUDED.meta_cumplimiento_anual_texto,
+    meta_cumplimiento_anual_porcentaje = EXCLUDED.meta_cumplimiento_anual_porcentaje,
+    annual_target = EXCLUDED.annual_target,
+    annual_target_quantity = EXCLUDED.annual_target_quantity,
+    period_target = EXCLUDED.period_target,
+    period_target_quantity = EXCLUDED.period_target_quantity,
+    current_result = EXCLUDED.current_result,
+    current_result_quantity = EXCLUDED.current_result_quantity,
+    source = EXCLUDED.source,
+    cutoff_date = EXCLUDED.cutoff_date,
+    corte1 = EXCLUDED.corte1,
+    corte2 = EXCLUDED.corte2,
+    corte3 = EXCLUDED.corte3,
+    data = EXCLUDED.data;
+
+INSERT INTO public.indicators (id, program_id, code, name, description, target_value, current_value, unit, periodicity, weight, good_threshold, warning_threshold, measurements, cuts, last_updated, componente, objetivo_especifico, corte_seleccionado, numerador_descripcion, numerador_valor, numerador_tipo, denominador_descripcion, denominador_valor, denominador_tipo, peso_relativo, medio_verificacion_numerador, medio_verificacion_denominador, meta_cumplimiento_anual_texto, meta_cumplimiento_anual_porcentaje, annual_target, annual_target_quantity, period_target, period_target_quantity, current_result, current_result_quantity, source, cutoff_date, corte1, corte2, corte3, data)
+VALUES ('ind_mas_ama_01', 'praps_mas_ama', 'Indicador 1', 'Egresos de Talleres de Estimulación Integral MAS AMA', 'Adultos mayores que completan el ciclo de 3 meses de talleres con asistencia ≥ 80%.', 1200, 640, 'personas', 'Trimestral', 100, 85, 70, '[{"id":"m_ma_1","indicatorId":"ind_mas_ama_01","period":"2026-Q1","date":"2026-03-31","result":310,"target":300,"registeredBy":"Klaus Bauer"},{"id":"m_ma_2","indicatorId":"ind_mas_ama_01","period":"2026-Q2","date":"2026-06-30","result":640,"target":600,"registeredBy":"Klaus Bauer"}]'::jsonb, '[]'::jsonb, '2026-09-24T11:31:31.700Z', NULL, 'Adultos mayores que completan el ciclo de 3 meses de talleres con asistencia ≥ 80%.', '1° corte', NULL, NULL, 'porcentaje', NULL, NULL, 'porcentaje', 100, NULL, NULL, NULL, 1200, 1200, NULL, 600, NULL, 640, NULL, 'Plataforma MAS AMA Minsal / REM A28', '2026-06-30', '{"target":600,"result":640,"date":"2026-06-30"}'::jsonb, '{"target":1200,"result":1210,"date":"2026-12-31"}'::jsonb, NULL, '{"id":"ind_mas_ama_01","programId":"praps_mas_ama","code":"Indicador 1","name":"Egresos de Talleres de Estimulación Integral MAS AMA","description":"Adultos mayores que completan el ciclo de 3 meses de talleres con asistencia ≥ 80%.","periodicity":"Trimestral","pesoRelativo":100,"annualTarget":1200,"periodTarget":600,"currentResult":640,"unit":"personas","direction":"higher_is_better","cutoffDate":"2026-06-30","responsible":"Klga. Valentina Jerez F.","source":"Plataforma MAS AMA Minsal / REM A28","notes":"Excelente adherencia comunitaria y vinculación con JJVV.","corte1":{"target":600,"result":640,"date":"2026-06-30"},"corte2":{"target":1200,"result":1210,"date":"2026-12-31"},"measurements":[{"id":"m_ma_1","indicatorId":"ind_mas_ama_01","period":"2026-Q1","date":"2026-03-31","result":310,"target":300,"registeredBy":"Klaus Bauer"},{"id":"m_ma_2","indicatorId":"ind_mas_ama_01","period":"2026-Q2","date":"2026-06-30","result":640,"target":600,"registeredBy":"Klaus Bauer"}],"createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-07-20T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    target_value = EXCLUDED.target_value,
+    current_value = EXCLUDED.current_value,
+    unit = EXCLUDED.unit,
+    periodicity = EXCLUDED.periodicity,
+    weight = EXCLUDED.weight,
+    good_threshold = EXCLUDED.good_threshold,
+    warning_threshold = EXCLUDED.warning_threshold,
+    measurements = EXCLUDED.measurements,
+    cuts = EXCLUDED.cuts,
+    last_updated = EXCLUDED.last_updated,
+    componente = EXCLUDED.componente,
+    objetivo_especifico = EXCLUDED.objetivo_especifico,
+    corte_seleccionado = EXCLUDED.corte_seleccionado,
+    numerador_descripcion = EXCLUDED.numerador_descripcion,
+    numerador_valor = EXCLUDED.numerador_valor,
+    numerador_tipo = EXCLUDED.numerador_tipo,
+    denominador_descripcion = EXCLUDED.denominador_descripcion,
+    denominador_valor = EXCLUDED.denominador_valor,
+    denominador_tipo = EXCLUDED.denominador_tipo,
+    peso_relativo = EXCLUDED.peso_relativo,
+    medio_verificacion_numerador = EXCLUDED.medio_verificacion_numerador,
+    medio_verificacion_denominador = EXCLUDED.medio_verificacion_denominador,
+    meta_cumplimiento_anual_texto = EXCLUDED.meta_cumplimiento_anual_texto,
+    meta_cumplimiento_anual_porcentaje = EXCLUDED.meta_cumplimiento_anual_porcentaje,
+    annual_target = EXCLUDED.annual_target,
+    annual_target_quantity = EXCLUDED.annual_target_quantity,
+    period_target = EXCLUDED.period_target,
+    period_target_quantity = EXCLUDED.period_target_quantity,
+    current_result = EXCLUDED.current_result,
+    current_result_quantity = EXCLUDED.current_result_quantity,
+    source = EXCLUDED.source,
+    cutoff_date = EXCLUDED.cutoff_date,
+    corte1 = EXCLUDED.corte1,
+    corte2 = EXCLUDED.corte2,
+    corte3 = EXCLUDED.corte3,
+    data = EXCLUDED.data;
+
+INSERT INTO public.indicators (id, program_id, code, name, description, target_value, current_value, unit, periodicity, weight, good_threshold, warning_threshold, measurements, cuts, last_updated, componente, objetivo_especifico, corte_seleccionado, numerador_descripcion, numerador_valor, numerador_tipo, denominador_descripcion, denominador_valor, denominador_tipo, peso_relativo, medio_verificacion_numerador, medio_verificacion_denominador, meta_cumplimiento_anual_texto, meta_cumplimiento_anual_porcentaje, annual_target, annual_target_quantity, period_target, period_target_quantity, current_result, current_result_quantity, source, cutoff_date, corte1, corte2, corte3, data)
+VALUES ('ind_resp_01', 'praps_respiratoria', 'Indicador 1', 'Control Integral del Paciente Asmático y EPOC en Sala ERA', 'Porcentaje de pacientes bajo control con espirometría vigente y técnica evaluada en el último año.', 85, 73, '%', 'Mensual', 60, 85, 70, '[{"id":"m_rs_1","indicatorId":"ind_resp_01","period":"2026-05","date":"2026-05-31","result":79,"target":85,"registeredBy":"Klaus Bauer"},{"id":"m_rs_2","indicatorId":"ind_resp_01","period":"2026-06","date":"2026-06-30","result":75.5,"target":85,"registeredBy":"Klaus Bauer"},{"id":"m_rs_3","indicatorId":"ind_resp_01","period":"2026-07","date":"2026-07-31","result":73,"target":85,"registeredBy":"Klaus Bauer"}]'::jsonb, '[]'::jsonb, '2026-09-24T11:31:31.700Z', NULL, 'Porcentaje de pacientes bajo control con espirometría vigente y técnica evaluada en el último año.', '1° corte', NULL, NULL, 'porcentaje', NULL, NULL, 'porcentaje', 60, NULL, NULL, NULL, 85, 85, NULL, 85, NULL, 73, NULL, 'REM P04 y Rayen', '2026-07-31', '{"target":85,"result":73,"date":"2026-07-31"}'::jsonb, '{"target":85,"result":84,"date":"2026-12-31"}'::jsonb, NULL, '{"id":"ind_resp_01","programId":"praps_respiratoria","code":"Indicador 1","name":"Control Integral del Paciente Asmático y EPOC en Sala ERA","description":"Porcentaje de pacientes bajo control con espirometría vigente y técnica evaluada en el último año.","periodicity":"Mensual","pesoRelativo":60,"annualTarget":85,"periodTarget":85,"currentResult":73,"unit":"%","direction":"higher_is_better","cutoffDate":"2026-07-31","responsible":"Klgo. Gonzalo Tapia G.","source":"REM P04 y Rayen","notes":"Faltan insumos de boquillas descartables para espirometrías en Manuel Bustos.","corte1":{"target":85,"result":73,"date":"2026-07-31"},"corte2":{"target":85,"result":84,"date":"2026-12-31"},"measurements":[{"id":"m_rs_1","indicatorId":"ind_resp_01","period":"2026-05","date":"2026-05-31","result":79,"target":85,"registeredBy":"Klaus Bauer"},{"id":"m_rs_2","indicatorId":"ind_resp_01","period":"2026-06","date":"2026-06-30","result":75.5,"target":85,"registeredBy":"Klaus Bauer"},{"id":"m_rs_3","indicatorId":"ind_resp_01","period":"2026-07","date":"2026-07-31","result":73,"target":85,"registeredBy":"Klaus Bauer"}],"createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-08-05T09:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    target_value = EXCLUDED.target_value,
+    current_value = EXCLUDED.current_value,
+    unit = EXCLUDED.unit,
+    periodicity = EXCLUDED.periodicity,
+    weight = EXCLUDED.weight,
+    good_threshold = EXCLUDED.good_threshold,
+    warning_threshold = EXCLUDED.warning_threshold,
+    measurements = EXCLUDED.measurements,
+    cuts = EXCLUDED.cuts,
+    last_updated = EXCLUDED.last_updated,
+    componente = EXCLUDED.componente,
+    objetivo_especifico = EXCLUDED.objetivo_especifico,
+    corte_seleccionado = EXCLUDED.corte_seleccionado,
+    numerador_descripcion = EXCLUDED.numerador_descripcion,
+    numerador_valor = EXCLUDED.numerador_valor,
+    numerador_tipo = EXCLUDED.numerador_tipo,
+    denominador_descripcion = EXCLUDED.denominador_descripcion,
+    denominador_valor = EXCLUDED.denominador_valor,
+    denominador_tipo = EXCLUDED.denominador_tipo,
+    peso_relativo = EXCLUDED.peso_relativo,
+    medio_verificacion_numerador = EXCLUDED.medio_verificacion_numerador,
+    medio_verificacion_denominador = EXCLUDED.medio_verificacion_denominador,
+    meta_cumplimiento_anual_texto = EXCLUDED.meta_cumplimiento_anual_texto,
+    meta_cumplimiento_anual_porcentaje = EXCLUDED.meta_cumplimiento_anual_porcentaje,
+    annual_target = EXCLUDED.annual_target,
+    annual_target_quantity = EXCLUDED.annual_target_quantity,
+    period_target = EXCLUDED.period_target,
+    period_target_quantity = EXCLUDED.period_target_quantity,
+    current_result = EXCLUDED.current_result,
+    current_result_quantity = EXCLUDED.current_result_quantity,
+    source = EXCLUDED.source,
+    cutoff_date = EXCLUDED.cutoff_date,
+    corte1 = EXCLUDED.corte1,
+    corte2 = EXCLUDED.corte2,
+    corte3 = EXCLUDED.corte3,
+    data = EXCLUDED.data;
+
+INSERT INTO public.indicators (id, program_id, code, name, description, target_value, current_value, unit, periodicity, weight, good_threshold, warning_threshold, measurements, cuts, last_updated, componente, objetivo_especifico, corte_seleccionado, numerador_descripcion, numerador_valor, numerador_tipo, denominador_descripcion, denominador_valor, denominador_tipo, peso_relativo, medio_verificacion_numerador, medio_verificacion_denominador, meta_cumplimiento_anual_texto, meta_cumplimiento_anual_porcentaje, annual_target, annual_target_quantity, period_target, period_target_quantity, current_result, current_result_quantity, source, cutoff_date, corte1, corte2, corte3, data)
+VALUES ('ind_resp_ci_01', 'praps_respiratoria', 'Indicador 2', 'Tiempo de Respuesta en Atención Kinesiológica de Urgencia en Contingencia', 'Porcentaje de pacientes respiratorios agudos atendidos en SAPU/SAR dentro de los 30 min de categorización C3/C4.', 90, 91.5, '%', 'Mensual', 40, 85, 70, '[{"id":"m_ci_1","indicatorId":"ind_resp_ci_01","period":"2026-06","date":"2026-06-30","result":89,"target":90,"registeredBy":"Klaus Bauer"},{"id":"m_ci_2","indicatorId":"ind_resp_ci_01","period":"2026-07","date":"2026-07-31","result":91.5,"target":90,"registeredBy":"Klaus Bauer"}]'::jsonb, '[]'::jsonb, '2026-09-24T11:31:31.700Z', NULL, 'Porcentaje de pacientes respiratorios agudos atendidos en SAPU/SAR dentro de los 30 min de categorización C3/C4.', '1° corte', NULL, NULL, 'porcentaje', NULL, NULL, 'porcentaje', 40, NULL, NULL, NULL, 90, 90, NULL, 90, NULL, 91.5, NULL, 'Libro de Urgencias SAR Quilicura', '2026-07-31', '{"target":90,"result":91.5,"date":"2026-07-31"}'::jsonb, '{"target":90,"result":92,"date":"2026-12-31"}'::jsonb, NULL, '{"id":"ind_resp_ci_01","programId":"praps_respiratoria","subprogramId":"Campaña de Invierno","code":"Indicador 2","name":"Tiempo de Respuesta en Atención Kinesiológica de Urgencia en Contingencia","description":"Porcentaje de pacientes respiratorios agudos atendidos en SAPU/SAR dentro de los 30 min de categorización C3/C4.","periodicity":"Mensual","pesoRelativo":40,"annualTarget":90,"periodTarget":90,"currentResult":91.5,"unit":"%","direction":"higher_is_better","cutoffDate":"2026-07-31","responsible":"Klga. Constanza Pino H.","source":"Libro de Urgencias SAR Quilicura","notes":"Operación fluida gracias al refuerzo de turnos contratados.","corte1":{"target":90,"result":91.5,"date":"2026-07-31"},"corte2":{"target":90,"result":92,"date":"2026-12-31"},"measurements":[{"id":"m_ci_1","indicatorId":"ind_resp_ci_01","period":"2026-06","date":"2026-06-30","result":89,"target":90,"registeredBy":"Klaus Bauer"},{"id":"m_ci_2","indicatorId":"ind_resp_ci_01","period":"2026-07","date":"2026-07-31","result":91.5,"target":90,"registeredBy":"Klaus Bauer"}],"createdAt":"2026-05-15T09:00:00Z","updatedAt":"2026-08-01T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    target_value = EXCLUDED.target_value,
+    current_value = EXCLUDED.current_value,
+    unit = EXCLUDED.unit,
+    periodicity = EXCLUDED.periodicity,
+    weight = EXCLUDED.weight,
+    good_threshold = EXCLUDED.good_threshold,
+    warning_threshold = EXCLUDED.warning_threshold,
+    measurements = EXCLUDED.measurements,
+    cuts = EXCLUDED.cuts,
+    last_updated = EXCLUDED.last_updated,
+    componente = EXCLUDED.componente,
+    objetivo_especifico = EXCLUDED.objetivo_especifico,
+    corte_seleccionado = EXCLUDED.corte_seleccionado,
+    numerador_descripcion = EXCLUDED.numerador_descripcion,
+    numerador_valor = EXCLUDED.numerador_valor,
+    numerador_tipo = EXCLUDED.numerador_tipo,
+    denominador_descripcion = EXCLUDED.denominador_descripcion,
+    denominador_valor = EXCLUDED.denominador_valor,
+    denominador_tipo = EXCLUDED.denominador_tipo,
+    peso_relativo = EXCLUDED.peso_relativo,
+    medio_verificacion_numerador = EXCLUDED.medio_verificacion_numerador,
+    medio_verificacion_denominador = EXCLUDED.medio_verificacion_denominador,
+    meta_cumplimiento_anual_texto = EXCLUDED.meta_cumplimiento_anual_texto,
+    meta_cumplimiento_anual_porcentaje = EXCLUDED.meta_cumplimiento_anual_porcentaje,
+    annual_target = EXCLUDED.annual_target,
+    annual_target_quantity = EXCLUDED.annual_target_quantity,
+    period_target = EXCLUDED.period_target,
+    period_target_quantity = EXCLUDED.period_target_quantity,
+    current_result = EXCLUDED.current_result,
+    current_result_quantity = EXCLUDED.current_result_quantity,
+    source = EXCLUDED.source,
+    cutoff_date = EXCLUDED.cutoff_date,
+    corte1 = EXCLUDED.corte1,
+    corte2 = EXCLUDED.corte2,
+    corte3 = EXCLUDED.corte3,
+    data = EXCLUDED.data;
+
+INSERT INTO public.indicators (id, program_id, code, name, description, target_value, current_value, unit, periodicity, weight, good_threshold, warning_threshold, measurements, cuts, last_updated, componente, objetivo_especifico, corte_seleccionado, numerador_descripcion, numerador_valor, numerador_tipo, denominador_descripcion, denominador_valor, denominador_tipo, peso_relativo, medio_verificacion_numerador, medio_verificacion_denominador, meta_cumplimiento_anual_texto, meta_cumplimiento_anual_porcentaje, annual_target, annual_target_quantity, period_target, period_target_quantity, current_result, current_result_quantity, source, cutoff_date, corte1, corte2, corte3, data)
+VALUES ('ind_mayores_empam_01', 'prog_personas_mayores', 'Indicador 1', 'Cobertura Comunal de Examen de Medicina Preventiva del Adulto Mayor (EMPAM)', 'Total acumulado de EMPAM aplicados en los 3 CESFAM de Quilicura respecto a la meta ministerial.', 6800, 3340, 'evaluaciones', 'Mensual', 100, 85, 70, '[{"id":"m_emp_1","indicatorId":"ind_mayores_empam_01","period":"2026-04","date":"2026-04-30","result":1850,"target":2266,"registeredBy":"Klaus Bauer"},{"id":"m_emp_2","indicatorId":"ind_mayores_empam_01","period":"2026-05","date":"2026-05-31","result":2320,"target":2833,"registeredBy":"Klaus Bauer"},{"id":"m_emp_3","indicatorId":"ind_mayores_empam_01","period":"2026-06","date":"2026-06-30","result":2810,"target":3400,"registeredBy":"Klaus Bauer"},{"id":"m_emp_4","indicatorId":"ind_mayores_empam_01","period":"2026-07","date":"2026-07-31","result":3340,"target":3966,"registeredBy":"Klaus Bauer"}]'::jsonb, '[]'::jsonb, '2026-09-24T11:31:31.700Z', NULL, 'Total acumulado de EMPAM aplicados en los 3 CESFAM de Quilicura respecto a la meta ministerial.', '1° corte', NULL, NULL, 'porcentaje', NULL, NULL, 'porcentaje', 100, NULL, NULL, NULL, 6800, 6800, NULL, 3966, NULL, 3340, NULL, 'REM A01 y Registro Comunal EMPAM', '2026-07-31', '{"target":3966,"result":3340,"date":"2026-07-31"}'::jsonb, '{"target":6800,"result":6450,"date":"2026-12-31"}'::jsonb, NULL, '{"id":"ind_mayores_empam_01","programId":"prog_personas_mayores","code":"Indicador 1","name":"Cobertura Comunal de Examen de Medicina Preventiva del Adulto Mayor (EMPAM)","description":"Total acumulado de EMPAM aplicados en los 3 CESFAM de Quilicura respecto a la meta ministerial.","periodicity":"Mensual","pesoRelativo":100,"annualTarget":6800,"periodTarget":3966,"currentResult":3340,"unit":"evaluaciones","direction":"higher_is_better","cutoffDate":"2026-07-31","responsible":"T.S. Lorena Abarca M.","source":"REM A01 y Registro Comunal EMPAM","notes":"Cumplimiento del 84.2% del período. Brecha de 626 evaluaciones concentrada en CESFAM Salvador Allende.","corte1":{"target":3966,"result":3340,"date":"2026-07-31"},"corte2":{"target":6800,"result":6450,"date":"2026-12-31"},"measurements":[{"id":"m_emp_1","indicatorId":"ind_mayores_empam_01","period":"2026-04","date":"2026-04-30","result":1850,"target":2266,"registeredBy":"Klaus Bauer"},{"id":"m_emp_2","indicatorId":"ind_mayores_empam_01","period":"2026-05","date":"2026-05-31","result":2320,"target":2833,"registeredBy":"Klaus Bauer"},{"id":"m_emp_3","indicatorId":"ind_mayores_empam_01","period":"2026-06","date":"2026-06-30","result":2810,"target":3400,"registeredBy":"Klaus Bauer"},{"id":"m_emp_4","indicatorId":"ind_mayores_empam_01","period":"2026-07","date":"2026-07-31","result":3340,"target":3966,"registeredBy":"Klaus Bauer"}],"createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-08-06T11:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    target_value = EXCLUDED.target_value,
+    current_value = EXCLUDED.current_value,
+    unit = EXCLUDED.unit,
+    periodicity = EXCLUDED.periodicity,
+    weight = EXCLUDED.weight,
+    good_threshold = EXCLUDED.good_threshold,
+    warning_threshold = EXCLUDED.warning_threshold,
+    measurements = EXCLUDED.measurements,
+    cuts = EXCLUDED.cuts,
+    last_updated = EXCLUDED.last_updated,
+    componente = EXCLUDED.componente,
+    objetivo_especifico = EXCLUDED.objetivo_especifico,
+    corte_seleccionado = EXCLUDED.corte_seleccionado,
+    numerador_descripcion = EXCLUDED.numerador_descripcion,
+    numerador_valor = EXCLUDED.numerador_valor,
+    numerador_tipo = EXCLUDED.numerador_tipo,
+    denominador_descripcion = EXCLUDED.denominador_descripcion,
+    denominador_valor = EXCLUDED.denominador_valor,
+    denominador_tipo = EXCLUDED.denominador_tipo,
+    peso_relativo = EXCLUDED.peso_relativo,
+    medio_verificacion_numerador = EXCLUDED.medio_verificacion_numerador,
+    medio_verificacion_denominador = EXCLUDED.medio_verificacion_denominador,
+    meta_cumplimiento_anual_texto = EXCLUDED.meta_cumplimiento_anual_texto,
+    meta_cumplimiento_anual_porcentaje = EXCLUDED.meta_cumplimiento_anual_porcentaje,
+    annual_target = EXCLUDED.annual_target,
+    annual_target_quantity = EXCLUDED.annual_target_quantity,
+    period_target = EXCLUDED.period_target,
+    period_target_quantity = EXCLUDED.period_target_quantity,
+    current_result = EXCLUDED.current_result,
+    current_result_quantity = EXCLUDED.current_result_quantity,
+    source = EXCLUDED.source,
+    cutoff_date = EXCLUDED.cutoff_date,
+    corte1 = EXCLUDED.corte1,
+    corte2 = EXCLUDED.corte2,
+    corte3 = EXCLUDED.corte3,
+    data = EXCLUDED.data;
+
+
+-- --- TAREAS Y PLANIFICACIÓN ---
+
+INSERT INTO public.tasks (id, program_id, title, description, assigned_to, assigned_role, establishment_id, start_date, due_date, end_date, status, priority, progress, category, checklist, budget_assigned, milestone, notes, updated_at, data)
+VALUES ('tsk_01', 'praps_cpu', 'Reclamar y exigir entrega urgente de apósitos hidrocoloides para CPU', 'Contactar a gerencia de operaciones de Droguería Médica Central por atraso en REQ-CPU-2026-08.', 'Klaus Bauer', NULL, NULL, NULL, '2026-08-14', NULL, 'por_hacer', 'critica', 0, 'Compra / Abastecimiento', '[{"id":"chk_1","description":"Llamar a jefe de despacho de Droguería Médica","isCompleted":true},{"id":"chk_2","description":"Exigir número de guía de despacho de transportista","isCompleted":false},{"id":"chk_3","description":"Notificar a enfermera encargada de sector Irene Frei","isCompleted":false}]'::jsonb, 0, false, 'Insumo indispensable para evitar suspensión de curaciones avanzadas.', '2026-09-24T11:31:31.700Z', '{"id":"tsk_01","title":"Reclamar y exigir entrega urgente de apósitos hidrocoloides para CPU","description":"Contactar a gerencia de operaciones de Droguería Médica Central por atraso en REQ-CPU-2026-08.","programId":"praps_cpu","category":"Compra / Abastecimiento","categoryId":"cat_compra","origin":"Compra","originType":"purchase","originId":"pur_cpu_01","originLabel":"REQ-CPU-2026-08","responsible":"Klaus Bauer","priority":"critica","isUrgent":true,"dueDate":"2026-08-14","status":"por_hacer","notes":"Insumo indispensable para evitar suspensión de curaciones avanzadas.","checklist":[{"id":"chk_1","description":"Llamar a jefe de despacho de Droguería Médica","isCompleted":true},{"id":"chk_2","description":"Exigir número de guía de despacho de transportista","isCompleted":false},{"id":"chk_3","description":"Notificar a enfermera encargada de sector Irene Frei","isCompleted":false}],"history":[{"id":"aud_1","taskId":"tsk_01","user":"Klaus Bauer","date":"2026-08-08T09:00:00Z","action":"crear","details":"Tarea creada desde requerimiento de compra REQ-CPU-2026-08"},{"id":"aud_2","taskId":"tsk_01","user":"Klaus Bauer","date":"2026-08-12T11:30:00Z","action":"urgencia","details":"Marcada como urgente por stock crítico en bodega"}],"createdBy":"Klaus Bauer","createdAt":"2026-08-08T09:00:00Z","updatedAt":"2026-08-14T18:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    assigned_to = EXCLUDED.assigned_to,
+    assigned_role = EXCLUDED.assigned_role,
+    establishment_id = EXCLUDED.establishment_id,
+    start_date = EXCLUDED.start_date,
+    due_date = EXCLUDED.due_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    progress = EXCLUDED.progress,
+    category = EXCLUDED.category,
+    checklist = EXCLUDED.checklist,
+    budget_assigned = EXCLUDED.budget_assigned,
+    milestone = EXCLUDED.milestone,
+    notes = EXCLUDED.notes,
+    updated_at = EXCLUDED.updated_at,
+    data = EXCLUDED.data;
+
+INSERT INTO public.tasks (id, program_id, title, description, assigned_to, assigned_role, establishment_id, start_date, due_date, end_date, status, priority, progress, category, checklist, budget_assigned, milestone, notes, updated_at, data)
+VALUES ('tsk_02', 'praps_imagenes', 'Exigir al proveedor de mamografías el calendario de operativos móviles', 'Compromiso de reunión SSMN. Se requiere nómina de fechas para citación de usuarias.', 'Klaus Bauer', NULL, NULL, NULL, '2026-08-16', NULL, 'en_ejecucion', 'critica', 0, 'Reuniones / Compromisos', '[{"id":"chk_4","description":"Revisar nómina de usuarias en lista de espera comunal","isCompleted":true},{"id":"chk_5","description":"Solicitar confirmación formal por correo electrónico","isCompleted":true},{"id":"chk_6","description":"Agendar puntos de estacionamiento para camión clínico","isCompleted":false}]'::jsonb, 0, false, NULL, '2026-09-24T11:31:31.700Z', '{"id":"tsk_02","title":"Exigir al proveedor de mamografías el calendario de operativos móviles","description":"Compromiso de reunión SSMN. Se requiere nómina de fechas para citación de usuarias.","programId":"praps_imagenes","category":"Reuniones / Compromisos","categoryId":"cat_reuniones","origin":"Reunión","originType":"meeting","originId":"meet_ssmn_01","originLabel":"Mesa SSMN Imágenes","responsible":"Klaus Bauer","priority":"critica","isUrgent":true,"dueDate":"2026-08-16","status":"en_ejecucion","checklist":[{"id":"chk_4","description":"Revisar nómina de usuarias en lista de espera comunal","isCompleted":true},{"id":"chk_5","description":"Solicitar confirmación formal por correo electrónico","isCompleted":true},{"id":"chk_6","description":"Agendar puntos de estacionamiento para camión clínico","isCompleted":false}],"history":[{"id":"aud_3","taskId":"tsk_02","user":"Klaus Bauer","date":"2026-08-11T15:00:00Z","action":"crear","details":"Compromiso derivado de mesa de trabajo SSMN"},{"id":"aud_4","taskId":"tsk_02","user":"Klaus Bauer","date":"2026-08-13T10:00:00Z","action":"estado","previousValue":"por_hacer","newValue":"en_ejecucion","details":"Iniciada gestión de coordinación con SOME comunal"}],"createdBy":"Klaus Bauer","createdAt":"2026-08-11T15:00:00Z","updatedAt":"2026-08-15T08:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    assigned_to = EXCLUDED.assigned_to,
+    assigned_role = EXCLUDED.assigned_role,
+    establishment_id = EXCLUDED.establishment_id,
+    start_date = EXCLUDED.start_date,
+    due_date = EXCLUDED.due_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    progress = EXCLUDED.progress,
+    category = EXCLUDED.category,
+    checklist = EXCLUDED.checklist,
+    budget_assigned = EXCLUDED.budget_assigned,
+    milestone = EXCLUDED.milestone,
+    notes = EXCLUDED.notes,
+    updated_at = EXCLUDED.updated_at,
+    data = EXCLUDED.data;
+
+INSERT INTO public.tasks (id, program_id, title, description, assigned_to, assigned_role, establishment_id, start_date, due_date, end_date, status, priority, progress, category, checklist, budget_assigned, milestone, notes, updated_at, data)
+VALUES ('tsk_03', 'praps_respiratoria', 'Enviar informe de avance financiero semestral PRAPS al SSMN', 'Consolidar planillas de ejecución y modificaciones presupuestarias aprobadas por decreto alcaldicio.', 'Klaus Bauer', NULL, NULL, NULL, '2026-08-15', NULL, 'por_hacer', 'alta', 0, 'Financiera', '[{"id":"chk_7","description":"Cuadrar balance presupuestario con Tesorería","isCompleted":true},{"id":"chk_8","description":"Adjuntar decretos alcaldicios de modificación","isCompleted":false}]'::jsonb, 0, false, 'Revisar rendición de fondos de Campaña de Invierno.', '2026-09-24T11:31:31.700Z', '{"id":"tsk_03","title":"Enviar informe de avance financiero semestral PRAPS al SSMN","description":"Consolidar planillas de ejecución y modificaciones presupuestarias aprobadas por decreto alcaldicio.","programId":"praps_respiratoria","category":"Financiera","categoryId":"cat_fin","origin":"Financiero","originType":"financial","responsible":"Klaus Bauer","priority":"alta","isUrgent":false,"dueDate":"2026-08-15","status":"por_hacer","notes":"Revisar rendición de fondos de Campaña de Invierno.","checklist":[{"id":"chk_7","description":"Cuadrar balance presupuestario con Tesorería","isCompleted":true},{"id":"chk_8","description":"Adjuntar decretos alcaldicios de modificación","isCompleted":false}],"history":[{"id":"aud_5","taskId":"tsk_03","user":"Klaus Bauer","date":"2026-08-05T10:00:00Z","action":"crear","details":"Tarea programada para control semestral"}],"createdBy":"Klaus Bauer","createdAt":"2026-08-05T10:00:00Z","updatedAt":"2026-08-15T08:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    assigned_to = EXCLUDED.assigned_to,
+    assigned_role = EXCLUDED.assigned_role,
+    establishment_id = EXCLUDED.establishment_id,
+    start_date = EXCLUDED.start_date,
+    due_date = EXCLUDED.due_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    progress = EXCLUDED.progress,
+    category = EXCLUDED.category,
+    checklist = EXCLUDED.checklist,
+    budget_assigned = EXCLUDED.budget_assigned,
+    milestone = EXCLUDED.milestone,
+    notes = EXCLUDED.notes,
+    updated_at = EXCLUDED.updated_at,
+    data = EXCLUDED.data;
+
+INSERT INTO public.tasks (id, program_id, title, description, assigned_to, assigned_role, establishment_id, start_date, due_date, end_date, status, priority, progress, category, checklist, budget_assigned, milestone, notes, updated_at, data)
+VALUES ('tsk_04', 'praps_rehab', 'Publicar bases de postulación para vacante de Fonoaudiología RBC', 'Coordinar con Unidad de Selección DISAM la publicación en portal Empleos Públicos y redes municipales.', 'Klaus Bauer', NULL, NULL, NULL, '2026-08-17', NULL, 'por_hacer', 'alta', 0, 'RRHH', '[{"id":"chk_9","description":"Validar perfil de cargo con referente técnico","isCompleted":true},{"id":"chk_10","description":"Enviar formulario a RRHH DISAM","isCompleted":false}]'::jsonb, 0, false, NULL, '2026-09-24T11:31:31.700Z', '{"id":"tsk_04","title":"Publicar bases de postulación para vacante de Fonoaudiología RBC","description":"Coordinar con Unidad de Selección DISAM la publicación en portal Empleos Públicos y redes municipales.","programId":"praps_rehab","category":"RRHH","categoryId":"cat_rrhh","origin":"Manual","originType":"manual","responsible":"Klaus Bauer","priority":"alta","isUrgent":false,"dueDate":"2026-08-17","status":"por_hacer","checklist":[{"id":"chk_9","description":"Validar perfil de cargo con referente técnico","isCompleted":true},{"id":"chk_10","description":"Enviar formulario a RRHH DISAM","isCompleted":false}],"history":[{"id":"aud_6","taskId":"tsk_04","user":"Klaus Bauer","date":"2026-08-10T11:00:00Z","action":"crear","details":"Creación de tarea para cobertura de cupo"}],"createdBy":"Klaus Bauer","createdAt":"2026-08-10T11:00:00Z","updatedAt":"2026-08-10T11:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    assigned_to = EXCLUDED.assigned_to,
+    assigned_role = EXCLUDED.assigned_role,
+    establishment_id = EXCLUDED.establishment_id,
+    start_date = EXCLUDED.start_date,
+    due_date = EXCLUDED.due_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    progress = EXCLUDED.progress,
+    category = EXCLUDED.category,
+    checklist = EXCLUDED.checklist,
+    budget_assigned = EXCLUDED.budget_assigned,
+    milestone = EXCLUDED.milestone,
+    notes = EXCLUDED.notes,
+    updated_at = EXCLUDED.updated_at,
+    data = EXCLUDED.data;
+
+INSERT INTO public.tasks (id, program_id, title, description, assigned_to, assigned_role, establishment_id, start_date, due_date, end_date, status, priority, progress, category, checklist, budget_assigned, milestone, notes, updated_at, data)
+VALUES ('tsk_05', 'prog_personas_mayores', 'Revisar informe social y firmar expediente ELEAM-QLC-2026-04', 'Validar antecedentes socioeconómicos y médicos antes de envío a plataforma SENAMA.', 'T.S. Lorena Abarca M.', NULL, NULL, NULL, '2026-08-19', NULL, 'por_hacer', 'alta', 0, 'Documentación', '[{"id":"chk_11","description":"Revisar Registro Social de Hogares actualizado","isCompleted":true},{"id":"chk_12","description":"Firmar informe de vulnerabilidad geriátrica","isCompleted":false}]'::jsonb, 0, false, NULL, '2026-09-24T11:31:31.700Z', '{"id":"tsk_05","title":"Revisar informe social y firmar expediente ELEAM-QLC-2026-04","description":"Validar antecedentes socioeconómicos y médicos antes de envío a plataforma SENAMA.","programId":"prog_personas_mayores","category":"Documentación","categoryId":"cat_doc","origin":"ELEAM","originType":"eleam","originId":"eleam_01","originLabel":"ELEAM-QLC-2026-04","responsible":"T.S. Lorena Abarca M.","priority":"alta","isUrgent":false,"dueDate":"2026-08-19","status":"por_hacer","checklist":[{"id":"chk_11","description":"Revisar Registro Social de Hogares actualizado","isCompleted":true},{"id":"chk_12","description":"Firmar informe de vulnerabilidad geriátrica","isCompleted":false}],"history":[{"id":"aud_7","taskId":"tsk_05","user":"T.S. Lorena Abarca M.","date":"2026-08-12T14:00:00Z","action":"crear","details":"Expediente social listo para revisión final"}],"createdBy":"T.S. Lorena Abarca M.","createdAt":"2026-08-12T14:00:00Z","updatedAt":"2026-08-14T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    assigned_to = EXCLUDED.assigned_to,
+    assigned_role = EXCLUDED.assigned_role,
+    establishment_id = EXCLUDED.establishment_id,
+    start_date = EXCLUDED.start_date,
+    due_date = EXCLUDED.due_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    progress = EXCLUDED.progress,
+    category = EXCLUDED.category,
+    checklist = EXCLUDED.checklist,
+    budget_assigned = EXCLUDED.budget_assigned,
+    milestone = EXCLUDED.milestone,
+    notes = EXCLUDED.notes,
+    updated_at = EXCLUDED.updated_at,
+    data = EXCLUDED.data;
+
+INSERT INTO public.tasks (id, program_id, title, description, assigned_to, assigned_role, establishment_id, start_date, due_date, end_date, status, priority, progress, category, checklist, budget_assigned, milestone, notes, updated_at, data)
+VALUES ('tsk_06', 'praps_mas_ama', 'Supervisar jornada masiva de aplicación EMPAM en Club Adulto Mayor Santa Luisa', 'Acompañar a dupla MAS AMA y enfermeras de CESFAM Irene Frei en operativo de pesquisaje.', 'Klga. Valentina Jerez F.', NULL, NULL, NULL, '2026-08-20', NULL, 'por_hacer', 'media', 0, 'Coordinación', '[]'::jsonb, 0, false, NULL, '2026-09-24T11:31:31.700Z', '{"id":"tsk_06","title":"Supervisar jornada masiva de aplicación EMPAM en Club Adulto Mayor Santa Luisa","description":"Acompañar a dupla MAS AMA y enfermeras de CESFAM Irene Frei en operativo de pesquisaje.","programId":"praps_mas_ama","category":"Coordinación","categoryId":"cat_coord","origin":"EMPAM","originType":"empam","responsible":"Klga. Valentina Jerez F.","priority":"media","isUrgent":false,"dueDate":"2026-08-20","status":"por_hacer","history":[{"id":"aud_8","taskId":"tsk_06","user":"Klga. Valentina Jerez F.","date":"2026-08-10T16:00:00Z","action":"crear","details":"Planificación de terreno mensual"}],"createdBy":"Klga. Valentina Jerez F.","createdAt":"2026-08-10T16:00:00Z","updatedAt":"2026-08-10T16:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    assigned_to = EXCLUDED.assigned_to,
+    assigned_role = EXCLUDED.assigned_role,
+    establishment_id = EXCLUDED.establishment_id,
+    start_date = EXCLUDED.start_date,
+    due_date = EXCLUDED.due_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    progress = EXCLUDED.progress,
+    category = EXCLUDED.category,
+    checklist = EXCLUDED.checklist,
+    budget_assigned = EXCLUDED.budget_assigned,
+    milestone = EXCLUDED.milestone,
+    notes = EXCLUDED.notes,
+    updated_at = EXCLUDED.updated_at,
+    data = EXCLUDED.data;
+
+INSERT INTO public.tasks (id, program_id, title, description, assigned_to, assigned_role, establishment_id, start_date, due_date, end_date, status, priority, progress, category, checklist, budget_assigned, milestone, notes, updated_at, data)
+VALUES ('tsk_07', 'praps_respiratoria', 'Revisar stock de aerocámaras y salbutamol para Salas IRA/ERA', 'Verificar inventario físico en bodega farmacia para contingencia de agosto.', 'Klgo. Gonzalo Tapia G.', NULL, NULL, NULL, '2026-08-22', NULL, 'por_hacer', 'media', 0, 'Técnica', '[]'::jsonb, 0, false, NULL, '2026-09-24T11:31:31.700Z', '{"id":"tsk_07","title":"Revisar stock de aerocámaras y salbutamol para Salas IRA/ERA","description":"Verificar inventario físico en bodega farmacia para contingencia de agosto.","programId":"praps_respiratoria","subprogramId":"Campaña de Invierno","category":"Técnica","categoryId":"cat_tecnica","origin":"Manual","originType":"manual","responsible":"Klgo. Gonzalo Tapia G.","priority":"media","isUrgent":false,"dueDate":"2026-08-22","status":"por_hacer","history":[{"id":"aud_9","taskId":"tsk_07","user":"Klgo. Gonzalo Tapia G.","date":"2026-08-12T10:00:00Z","action":"crear","details":"Control de stock periódico"}],"createdBy":"Klgo. Gonzalo Tapia G.","createdAt":"2026-08-12T10:00:00Z","updatedAt":"2026-08-12T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    assigned_to = EXCLUDED.assigned_to,
+    assigned_role = EXCLUDED.assigned_role,
+    establishment_id = EXCLUDED.establishment_id,
+    start_date = EXCLUDED.start_date,
+    due_date = EXCLUDED.due_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    progress = EXCLUDED.progress,
+    category = EXCLUDED.category,
+    checklist = EXCLUDED.checklist,
+    budget_assigned = EXCLUDED.budget_assigned,
+    milestone = EXCLUDED.milestone,
+    notes = EXCLUDED.notes,
+    updated_at = EXCLUDED.updated_at,
+    data = EXCLUDED.data;
+
+INSERT INTO public.tasks (id, program_id, title, description, assigned_to, assigned_role, establishment_id, start_date, due_date, end_date, status, priority, progress, category, checklist, budget_assigned, milestone, notes, updated_at, data)
+VALUES ('tsk_08', 'praps_rehab', 'Validar cierre contable del mes de julio de fondos PRAPS', 'Conciliación bancaria municipal con departamento de contabilidad y finanzas.', 'Klaus Bauer', NULL, NULL, NULL, '2026-08-08', NULL, 'terminada', 'media', 0, 'Financiera', '[]'::jsonb, 0, false, 'Cuadrado 100% con saldo en tesorería.', '2026-09-24T11:31:31.700Z', '{"id":"tsk_08","title":"Validar cierre contable del mes de julio de fondos PRAPS","description":"Conciliación bancaria municipal con departamento de contabilidad y finanzas.","programId":"praps_rehab","category":"Financiera","categoryId":"cat_fin","origin":"Financiero","originType":"financial","responsible":"Klaus Bauer","priority":"media","isUrgent":false,"dueDate":"2026-08-08","completedAt":"2026-08-08T17:00:00Z","completedBy":"Klaus Bauer","status":"terminada","notes":"Cuadrado 100% con saldo en tesorería.","history":[{"id":"aud_10","taskId":"tsk_08","user":"Klaus Bauer","date":"2026-08-01T09:00:00Z","action":"crear","details":"Creación de tarea"},{"id":"aud_11","taskId":"tsk_08","user":"Klaus Bauer","date":"2026-08-08T17:00:00Z","action":"completar","details":"Cierre conforme y validado"}],"createdBy":"Klaus Bauer","createdAt":"2026-08-01T09:00:00Z","updatedAt":"2026-08-08T17:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    assigned_to = EXCLUDED.assigned_to,
+    assigned_role = EXCLUDED.assigned_role,
+    establishment_id = EXCLUDED.establishment_id,
+    start_date = EXCLUDED.start_date,
+    due_date = EXCLUDED.due_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    progress = EXCLUDED.progress,
+    category = EXCLUDED.category,
+    checklist = EXCLUDED.checklist,
+    budget_assigned = EXCLUDED.budget_assigned,
+    milestone = EXCLUDED.milestone,
+    notes = EXCLUDED.notes,
+    updated_at = EXCLUDED.updated_at,
+    data = EXCLUDED.data;
+
+INSERT INTO public.tasks (id, program_id, title, description, assigned_to, assigned_role, establishment_id, start_date, due_date, end_date, status, priority, progress, category, checklist, budget_assigned, milestone, notes, updated_at, data)
+VALUES ('tsk_09', 'transversal', 'Auditoría transversal de expedientes y archivo digital comunal', 'Revisión cruzada de carpetas compartidas y expedientes CeroPapel en los 6 programas de salud.', 'Klaus Bauer', NULL, NULL, NULL, '2026-08-25', NULL, 'por_hacer', 'alta', 0, 'Administrativa', '[{"id":"chk_13","description":"Revisar expedientes de convenios PRAPS","isCompleted":false},{"id":"chk_14","description":"Verificar carpetas de respaldo de compras y pagos","isCompleted":false}]'::jsonb, 0, false, NULL, '2026-09-24T11:31:31.700Z', '{"id":"tsk_09","title":"Auditoría transversal de expedientes y archivo digital comunal","description":"Revisión cruzada de carpetas compartidas y expedientes CeroPapel en los 6 programas de salud.","programId":"transversal","category":"Administrativa","categoryId":"cat_admin","origin":"Manual","originType":"manual","responsible":"Klaus Bauer","priority":"alta","isUrgent":false,"dueDate":"2026-08-25","status":"por_hacer","checklist":[{"id":"chk_13","description":"Revisar expedientes de convenios PRAPS","isCompleted":false},{"id":"chk_14","description":"Verificar carpetas de respaldo de compras y pagos","isCompleted":false}],"history":[{"id":"aud_12","taskId":"tsk_09","user":"Klaus Bauer","date":"2026-08-14T09:00:00Z","action":"crear","details":"Tarea transversal creada"}],"createdBy":"Klaus Bauer","createdAt":"2026-08-14T09:00:00Z","updatedAt":"2026-08-14T09:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    assigned_to = EXCLUDED.assigned_to,
+    assigned_role = EXCLUDED.assigned_role,
+    establishment_id = EXCLUDED.establishment_id,
+    start_date = EXCLUDED.start_date,
+    due_date = EXCLUDED.due_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    progress = EXCLUDED.progress,
+    category = EXCLUDED.category,
+    checklist = EXCLUDED.checklist,
+    budget_assigned = EXCLUDED.budget_assigned,
+    milestone = EXCLUDED.milestone,
+    notes = EXCLUDED.notes,
+    updated_at = EXCLUDED.updated_at,
+    data = EXCLUDED.data;
+
+
+-- --- COMPRAS Y ADQUISICIONES ---
+
+INSERT INTO public.purchases (id, program_id, title, amount, establishment_id, code, description, justification, estimated_amount, actual_amount, supplier, status, stage, priority, category, request_date, date, orden_compra, oc_number, folio_mercado_publico, responsible_user, reception_status, invoice_status, data)
+VALUES ('pur_imag_01', 'praps_imagenes', 'Servicio de Mantenimiento Preventivo Transductores Ecógrafo', 1800000, NULL, 'PUR_001', 'Calibración y revisión técnica semestral del ecógrafo multipropósito de CESFAM Manuel Bustos.', '', 1800000, NULL, 'Medical Systems Chile', 'solicitado', 'pendiente', 'media', 'Servicios de Radiología e Imágenes', '2026-08-01', '2026-08-01', NULL, NULL, NULL, NULL, 'pendiente', 'sin_factura', '{"id":"pur_imag_01","programId":"praps_imagenes","requestNumber":"REQ-IM-2026-03","category":"Servicios de Radiología e Imágenes","itemOrService":"Servicio de Mantenimiento Preventivo Transductores Ecógrafo","description":"Calibración y revisión técnica semestral del ecógrafo multipropósito de CESFAM Manuel Bustos.","estimatedAmount":1800000,"totalPriceWithTax":1800000,"supplier":"Medical Systems Chile","modalidadCompra":"Convenio marco","units":1,"requestDate":"2026-08-01","requiredDate":"2026-08-28","responsible":"Referente Imágenes DISAM","macroState":"pendiente","status":"solicitado","receptionStatus":"pendiente","invoiceStatus":"sin_factura","ceroPapelExpediente":"EXP-2026-8841","ceroPapelEstado":"En Firma","ceroPapelInitiationDate":"2026-08-01","notes":"Se adjuntaron términos de referencia a la unidad de Adquisiciones DISAM para emisión de requerimiento.","createdAt":"2026-08-01T12:00:00Z","updatedAt":"2026-08-01T12:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    amount = EXCLUDED.amount,
+    establishment_id = EXCLUDED.establishment_id,
+    code = EXCLUDED.code,
+    description = EXCLUDED.description,
+    justification = EXCLUDED.justification,
+    estimated_amount = EXCLUDED.estimated_amount,
+    actual_amount = EXCLUDED.actual_amount,
+    supplier = EXCLUDED.supplier,
+    status = EXCLUDED.status,
+    stage = EXCLUDED.stage,
+    priority = EXCLUDED.priority,
+    category = EXCLUDED.category,
+    request_date = EXCLUDED.request_date,
+    date = EXCLUDED.date,
+    orden_compra = EXCLUDED.orden_compra,
+    oc_number = EXCLUDED.oc_number,
+    folio_mercado_publico = EXCLUDED.folio_mercado_publico,
+    responsible_user = EXCLUDED.responsible_user,
+    reception_status = EXCLUDED.reception_status,
+    invoice_status = EXCLUDED.invoice_status,
+    data = EXCLUDED.data;
+
+INSERT INTO public.purchases (id, program_id, title, amount, establishment_id, code, description, justification, estimated_amount, actual_amount, supplier, status, stage, priority, category, request_date, date, orden_compra, oc_number, folio_mercado_publico, responsible_user, reception_status, invoice_status, data)
+VALUES ('pur_mayores_01', 'prog_personas_mayores', 'Cintas Métricas, Dinamómetros y Sets de Evaluación EMPAM', 2450000, NULL, 'PUR_001', '15 sets de dinamometría manual y podómetros para triaje geriátrico en CESFAM y terreno.', '', 2450000, NULL, 'MedEquip Chile Ltda.', 'solicitado', 'pendiente', 'media', 'Kits y Material de Evaluación', '2026-08-10', '2026-08-10', NULL, NULL, NULL, NULL, 'pendiente', 'sin_factura', '{"id":"pur_mayores_01","programId":"prog_personas_mayores","requestNumber":"REQ-PM-2026-05","category":"Kits y Material de Evaluación","itemOrService":"Cintas Métricas, Dinamómetros y Sets de Evaluación EMPAM","description":"15 sets de dinamometría manual y podómetros para triaje geriátrico en CESFAM y terreno.","estimatedAmount":2450000,"totalPriceWithTax":2450000,"supplier":"MedEquip Chile Ltda.","modalidadCompra":"Compra ágil","units":15,"requestDate":"2026-08-10","requiredDate":"2026-08-30","responsible":"T.S. Lorena Abarca M.","macroState":"pendiente","status":"solicitado","receptionStatus":"pendiente","invoiceStatus":"sin_factura","ceroPapelExpediente":"EXP-2026-9012","ceroPapelEstado":"Borrador","ceroPapelInitiationDate":"2026-08-10","notes":"Presupuestado para iniciar compras ágiles a fin de mes.","createdAt":"2026-08-10T09:00:00Z","updatedAt":"2026-08-10T09:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    amount = EXCLUDED.amount,
+    establishment_id = EXCLUDED.establishment_id,
+    code = EXCLUDED.code,
+    description = EXCLUDED.description,
+    justification = EXCLUDED.justification,
+    estimated_amount = EXCLUDED.estimated_amount,
+    actual_amount = EXCLUDED.actual_amount,
+    supplier = EXCLUDED.supplier,
+    status = EXCLUDED.status,
+    stage = EXCLUDED.stage,
+    priority = EXCLUDED.priority,
+    category = EXCLUDED.category,
+    request_date = EXCLUDED.request_date,
+    date = EXCLUDED.date,
+    orden_compra = EXCLUDED.orden_compra,
+    oc_number = EXCLUDED.oc_number,
+    folio_mercado_publico = EXCLUDED.folio_mercado_publico,
+    responsible_user = EXCLUDED.responsible_user,
+    reception_status = EXCLUDED.reception_status,
+    invoice_status = EXCLUDED.invoice_status,
+    data = EXCLUDED.data;
+
+INSERT INTO public.purchases (id, program_id, title, amount, establishment_id, code, description, justification, estimated_amount, actual_amount, supplier, status, stage, priority, category, request_date, date, orden_compra, oc_number, folio_mercado_publico, responsible_user, reception_status, invoice_status, data)
+VALUES ('pur_resp_01', 'praps_respiratoria', 'Boquillas con Filtro Antibacteriano para Espirómetro', 2100000, NULL, 'PUR_001', 'Pack de 1.000 boquillas descartables con turbina para pruebas de función pulmonar en salas ERA.', '', 2100000, NULL, 'Insumos Clínicos del Norte SpA', 'en_compra', 'en_ejecucion', 'media', 'Insumos Respiratorios y Espirometría', '2026-07-28', '2026-07-28', NULL, NULL, NULL, NULL, 'pendiente', 'sin_factura', '{"id":"pur_resp_01","programId":"praps_respiratoria","requestNumber":"REQ-RESP-2026-22","category":"Insumos Respiratorios y Espirometría","itemOrService":"Boquillas con Filtro Antibacteriano para Espirómetro","description":"Pack de 1.000 boquillas descartables con turbina para pruebas de función pulmonar en salas ERA.","estimatedAmount":2100000,"totalPriceWithTax":2100000,"supplier":"Insumos Clínicos del Norte SpA","modalidadCompra":"Convenio marco","purchaseOrderNumber":"2404-142-CM26","orderSentDate":"2026-08-05","orderAcceptedDate":"2026-08-07","units":1000,"requestDate":"2026-07-28","requiredDate":"2026-08-18","responsible":"Klgo. Gonzalo Tapia G.","macroState":"en_ejecucion","status":"en_compra","receptionStatus":"pendiente","invoiceStatus":"sin_factura","ceroPapelExpediente":"EXP-2026-7910","ceroPapelEstado":"Firmado","ceroPapelInitiationDate":"2026-07-28","notes":"OC aceptada por proveedor. En tránsito hacia bodega central DISAM.","createdAt":"2026-07-28T09:00:00Z","updatedAt":"2026-08-10T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    amount = EXCLUDED.amount,
+    establishment_id = EXCLUDED.establishment_id,
+    code = EXCLUDED.code,
+    description = EXCLUDED.description,
+    justification = EXCLUDED.justification,
+    estimated_amount = EXCLUDED.estimated_amount,
+    actual_amount = EXCLUDED.actual_amount,
+    supplier = EXCLUDED.supplier,
+    status = EXCLUDED.status,
+    stage = EXCLUDED.stage,
+    priority = EXCLUDED.priority,
+    category = EXCLUDED.category,
+    request_date = EXCLUDED.request_date,
+    date = EXCLUDED.date,
+    orden_compra = EXCLUDED.orden_compra,
+    oc_number = EXCLUDED.oc_number,
+    folio_mercado_publico = EXCLUDED.folio_mercado_publico,
+    responsible_user = EXCLUDED.responsible_user,
+    reception_status = EXCLUDED.reception_status,
+    invoice_status = EXCLUDED.invoice_status,
+    data = EXCLUDED.data;
+
+INSERT INTO public.purchases (id, program_id, title, amount, establishment_id, code, description, justification, estimated_amount, actual_amount, supplier, status, stage, priority, category, request_date, date, orden_compra, oc_number, folio_mercado_publico, responsible_user, reception_status, invoice_status, data)
+VALUES ('pur_rehab_01', 'praps_rehab', 'Ayudas Técnicas: Sillas de Ruedas Estándar y Andadores 4 Ruedas', 6400000, NULL, 'PUR_001', 'Lote de 20 sillas de ruedas plegables y 15 andadores con freno para entrega a usuarios RBC.', '', 6400000, NULL, 'Ortopedia y Salud Integral Ltda.', 'en_compra', 'en_ejecucion', 'media', 'Insumos de rehabilitación', '2026-07-05', '2026-07-05', NULL, NULL, NULL, NULL, 'pendiente', 'sin_factura', '{"id":"pur_rehab_01","programId":"praps_rehab","requestNumber":"REQ-RH-2026-14","category":"Insumos de rehabilitación","itemOrService":"Ayudas Técnicas: Sillas de Ruedas Estándar y Andadores 4 Ruedas","description":"Lote de 20 sillas de ruedas plegables y 15 andadores con freno para entrega a usuarios RBC.","estimatedAmount":6400000,"finalAmount":6320000,"totalPriceWithTax":6320000,"supplier":"Ortopedia y Salud Integral Ltda.","modalidadCompra":"Convenio marco","purchaseOrderNumber":"2404-098-CM26","orderSentDate":"2026-07-15","orderAcceptedDate":"2026-07-18","units":35,"requestDate":"2026-07-05","requiredDate":"2026-08-04","responsible":"Klgo. Felipe Santander V.","macroState":"en_ejecucion","status":"en_compra","ceroPapelExpediente":"EXP-2026-7230","ceroPapelEstado":"Firmado","ceroPapelInitiationDate":"2026-07-05","notes":"Orden de compra enviada. Proveedor preparando despacho para entrega.","createdAt":"2026-07-05T11:00:00Z","updatedAt":"2026-08-08T09:30:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    amount = EXCLUDED.amount,
+    establishment_id = EXCLUDED.establishment_id,
+    code = EXCLUDED.code,
+    description = EXCLUDED.description,
+    justification = EXCLUDED.justification,
+    estimated_amount = EXCLUDED.estimated_amount,
+    actual_amount = EXCLUDED.actual_amount,
+    supplier = EXCLUDED.supplier,
+    status = EXCLUDED.status,
+    stage = EXCLUDED.stage,
+    priority = EXCLUDED.priority,
+    category = EXCLUDED.category,
+    request_date = EXCLUDED.request_date,
+    date = EXCLUDED.date,
+    orden_compra = EXCLUDED.orden_compra,
+    oc_number = EXCLUDED.oc_number,
+    folio_mercado_publico = EXCLUDED.folio_mercado_publico,
+    responsible_user = EXCLUDED.responsible_user,
+    reception_status = EXCLUDED.reception_status,
+    invoice_status = EXCLUDED.invoice_status,
+    data = EXCLUDED.data;
+
+INSERT INTO public.purchases (id, program_id, title, amount, establishment_id, code, description, justification, estimated_amount, actual_amount, supplier, status, stage, priority, category, request_date, date, orden_compra, oc_number, folio_mercado_publico, responsible_user, reception_status, invoice_status, data)
+VALUES ('pur_cpu_02', 'praps_cpu', 'Suministro Trimestral de Morfina y Analgesia Paliativa', 4200000, NULL, 'PUR_001', 'Ampollas de morfina 10mg, comprimidos de liberación prolongada y parches transdérmicos de fentanilo.', '', 4200000, NULL, 'Laboratorios Farmacéuticos Unidos S.A.', 'en_compra', 'en_ejecucion', 'media', 'Fármacos y Cuidados Paliativos', '2026-07-10', '2026-07-10', NULL, NULL, NULL, NULL, 'pendiente', 'sin_factura', '{"id":"pur_cpu_02","programId":"praps_cpu","requestNumber":"REQ-CPU-2026-11","category":"Fármacos y Cuidados Paliativos","itemOrService":"Suministro Trimestral de Morfina y Analgesia Paliativa","description":"Ampollas de morfina 10mg, comprimidos de liberación prolongada y parches transdérmicos de fentanilo.","estimatedAmount":4200000,"finalAmount":4180000,"totalPriceWithTax":4180000,"supplier":"Laboratorios Farmacéuticos Unidos S.A.","modalidadCompra":"Convenio marco","purchaseOrderNumber":"2404-115-CM26","units":500,"requestDate":"2026-07-10","requiredDate":"2026-08-01","responsible":"Klaus Bauer","macroState":"en_ejecucion","status":"en_compra","ceroPapelExpediente":"EXP-2026-7450","ceroPapelEstado":"Firmado","ceroPapelInitiationDate":"2026-07-10","notes":"OC emitida con proveedor. Despacho programado a farmacia central.","createdAt":"2026-07-10T10:00:00Z","updatedAt":"2026-08-06T15:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    amount = EXCLUDED.amount,
+    establishment_id = EXCLUDED.establishment_id,
+    code = EXCLUDED.code,
+    description = EXCLUDED.description,
+    justification = EXCLUDED.justification,
+    estimated_amount = EXCLUDED.estimated_amount,
+    actual_amount = EXCLUDED.actual_amount,
+    supplier = EXCLUDED.supplier,
+    status = EXCLUDED.status,
+    stage = EXCLUDED.stage,
+    priority = EXCLUDED.priority,
+    category = EXCLUDED.category,
+    request_date = EXCLUDED.request_date,
+    date = EXCLUDED.date,
+    orden_compra = EXCLUDED.orden_compra,
+    oc_number = EXCLUDED.oc_number,
+    folio_mercado_publico = EXCLUDED.folio_mercado_publico,
+    responsible_user = EXCLUDED.responsible_user,
+    reception_status = EXCLUDED.reception_status,
+    invoice_status = EXCLUDED.invoice_status,
+    data = EXCLUDED.data;
+
+INSERT INTO public.purchases (id, program_id, title, amount, establishment_id, code, description, justification, estimated_amount, actual_amount, supplier, status, stage, priority, category, request_date, date, orden_compra, oc_number, folio_mercado_publico, responsible_user, reception_status, invoice_status, data)
+VALUES ('pur_cpu_01', 'praps_cpu', 'Insumos de Curación Avanzada y Apósito Hidrocoloide CPU', 3850000, NULL, 'PUR_001', 'Adquisición de parches hidrocoloides, espumas de poliuretano y soluciones limpiadoras para pacientes postrados paliativos.', '', 3850000, NULL, 'Droguería Médica Central SpA', 'problema', 'en_ejecucion', 'media', 'Insumos de rehabilitación', '2026-07-20', '2026-07-20', NULL, NULL, NULL, NULL, 'pendiente', 'sin_factura', '{"id":"pur_cpu_01","requestNumber":"REQ-CPU-2026-08","category":"Insumos de rehabilitación","programId":"praps_cpu","itemOrService":"Insumos de Curación Avanzada y Apósito Hidrocoloide CPU","description":"Adquisición de parches hidrocoloides, espumas de poliuretano y soluciones limpiadoras para pacientes postrados paliativos.","estimatedAmount":3850000,"finalAmount":3790000,"totalPriceWithTax":3790000,"supplier":"Droguería Médica Central SpA","modalidadCompra":"Convenio marco","purchaseOrderNumber":"2404-067-CM26","requestDate":"2026-07-20","requiredDate":"2026-08-12","responsible":"Klaus Bauer","macroState":"en_ejecucion","status":"problema","problemReason":"Proveedor no despachó en fecha acordada y lote parcial venía defectuoso. Se solicitó reposición inmediata.","notes":"Crítico para abastecimiento del CESFAM Manuel Bustos y Visitas Domiciliarias.","ceroPapelExpediente":"EXP-2026-6890","ceroPapelEstado":"Derivado a Adquisiciones","ceroPapelInitiationDate":"2026-07-20","createdAt":"2026-07-20T10:00:00Z","updatedAt":"2026-08-13T16:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    amount = EXCLUDED.amount,
+    establishment_id = EXCLUDED.establishment_id,
+    code = EXCLUDED.code,
+    description = EXCLUDED.description,
+    justification = EXCLUDED.justification,
+    estimated_amount = EXCLUDED.estimated_amount,
+    actual_amount = EXCLUDED.actual_amount,
+    supplier = EXCLUDED.supplier,
+    status = EXCLUDED.status,
+    stage = EXCLUDED.stage,
+    priority = EXCLUDED.priority,
+    category = EXCLUDED.category,
+    request_date = EXCLUDED.request_date,
+    date = EXCLUDED.date,
+    orden_compra = EXCLUDED.orden_compra,
+    oc_number = EXCLUDED.oc_number,
+    folio_mercado_publico = EXCLUDED.folio_mercado_publico,
+    responsible_user = EXCLUDED.responsible_user,
+    reception_status = EXCLUDED.reception_status,
+    invoice_status = EXCLUDED.invoice_status,
+    data = EXCLUDED.data;
+
+INSERT INTO public.purchases (id, program_id, title, amount, establishment_id, code, description, justification, estimated_amount, actual_amount, supplier, status, stage, priority, category, request_date, date, orden_compra, oc_number, folio_mercado_publico, responsible_user, reception_status, invoice_status, data)
+VALUES ('pur_mas_ama_01', 'praps_mas_ama', 'Material Didáctico y Balones Terapéuticos Talleres MAS AMA', 1550000, NULL, 'PUR_001', 'Kits de bandas elásticas, colchonetas de yoga y juegos de estimulación cognitiva para clubes de adulto mayor.', '', 1550000, NULL, 'Didácticos y Deporte Chile', 'cerrado', 'completado', 'media', 'Material Didáctico y Estimulación', '2026-06-15', '2026-06-15', NULL, NULL, NULL, NULL, 'conforme', 'pagada', '{"id":"pur_mas_ama_01","programId":"praps_mas_ama","requestNumber":"REQ-MA-2026-09","category":"Material Didáctico y Estimulación","itemOrService":"Material Didáctico y Balones Terapéuticos Talleres MAS AMA","description":"Kits de bandas elásticas, colchonetas de yoga y juegos de estimulación cognitiva para clubes de adulto mayor.","estimatedAmount":1550000,"finalAmount":1510000,"totalPriceWithTax":1510000,"supplier":"Didácticos y Deporte Chile","modalidadCompra":"Compra ágil","purchaseOrderNumber":"2404-031-AG26","units":120,"requestDate":"2026-06-15","requiredDate":"2026-07-15","receptionDate":"2026-07-12","receptionResponsible":"Klga. Valentina Jerez F.","receptionNotes":"Recepcionado conforme en bodega central DISAM y distribuido íntegramente a CESFAM.","receptionActDoc":"ACTA-RC-2026-210","receptionStatus":"conforme","invoiceStatus":"pagada","invoiceNumber":"FAC-12890","invoiceDate":"2026-07-14","invoiceAmount":1510000,"invoicePaymentDate":"2026-07-28","invoiceNotes":"Comprobante de transferencia bancaria N° 981244 emitido por Tesorería Municipal.","responsible":"Klga. Valentina Jerez F.","macroState":"completado","status":"cerrado","ceroPapelExpediente":"EXP-2026-5120","ceroPapelEstado":"Archivado","ceroPapelInitiationDate":"2026-06-15","notes":"Proceso de compra y rendición ministerial 100% cerrado y conforme.","createdAt":"2026-06-15T10:00:00Z","updatedAt":"2026-07-28T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    amount = EXCLUDED.amount,
+    establishment_id = EXCLUDED.establishment_id,
+    code = EXCLUDED.code,
+    description = EXCLUDED.description,
+    justification = EXCLUDED.justification,
+    estimated_amount = EXCLUDED.estimated_amount,
+    actual_amount = EXCLUDED.actual_amount,
+    supplier = EXCLUDED.supplier,
+    status = EXCLUDED.status,
+    stage = EXCLUDED.stage,
+    priority = EXCLUDED.priority,
+    category = EXCLUDED.category,
+    request_date = EXCLUDED.request_date,
+    date = EXCLUDED.date,
+    orden_compra = EXCLUDED.orden_compra,
+    oc_number = EXCLUDED.oc_number,
+    folio_mercado_publico = EXCLUDED.folio_mercado_publico,
+    responsible_user = EXCLUDED.responsible_user,
+    reception_status = EXCLUDED.reception_status,
+    invoice_status = EXCLUDED.invoice_status,
+    data = EXCLUDED.data;
+
+INSERT INTO public.purchases (id, program_id, title, amount, establishment_id, code, description, justification, estimated_amount, actual_amount, supplier, status, stage, priority, category, request_date, date, orden_compra, oc_number, folio_mercado_publico, responsible_user, reception_status, invoice_status, data)
+VALUES ('pur_rehab_02', 'praps_rehab', 'Equipo de Electroterapia Combinada 2 Canales para Sala RBC', 3200000, NULL, 'PUR_001', 'Equipo portátil con ultrasonido y corrientes interferenciales para rehabilitación osteomuscular.', '', 3200000, NULL, 'Fisiomed Chile SpA', 'cerrado', 'completado', 'media', 'Equipamiento Clínico', '2026-05-10', '2026-05-10', NULL, NULL, NULL, NULL, 'conforme', 'pagada', '{"id":"pur_rehab_02","programId":"praps_rehab","requestNumber":"REQ-RH-2026-08","category":"Equipamiento Clínico","itemOrService":"Equipo de Electroterapia Combinada 2 Canales para Sala RBC","description":"Equipo portátil con ultrasonido y corrientes interferenciales para rehabilitación osteomuscular.","estimatedAmount":3200000,"finalAmount":3150000,"totalPriceWithTax":3150000,"supplier":"Fisiomed Chile SpA","modalidadCompra":"Convenio marco","purchaseOrderNumber":"2404-019-CM26","units":1,"requestDate":"2026-05-10","requiredDate":"2026-06-10","receptionDate":"2026-06-08","receptionResponsible":"Klgo. Felipe Santander V.","receptionNotes":"Equipo instalado y probado con éxito en CESFAM Salvador Allende.","receptionActDoc":"ACTA-RC-2026-154","receptionStatus":"conforme","invoiceStatus":"pagada","invoiceNumber":"FAC-45120","invoiceDate":"2026-06-11","invoiceAmount":3150000,"invoicePaymentDate":"2026-06-25","responsible":"Klgo. Felipe Santander V.","macroState":"completado","status":"cerrado","ceroPapelExpediente":"EXP-2026-4018","ceroPapelEstado":"Archivado","ceroPapelInitiationDate":"2026-05-10","notes":"Garantía técnica vigente de 24 meses.","createdAt":"2026-05-10T09:00:00Z","updatedAt":"2026-06-25T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    amount = EXCLUDED.amount,
+    establishment_id = EXCLUDED.establishment_id,
+    code = EXCLUDED.code,
+    description = EXCLUDED.description,
+    justification = EXCLUDED.justification,
+    estimated_amount = EXCLUDED.estimated_amount,
+    actual_amount = EXCLUDED.actual_amount,
+    supplier = EXCLUDED.supplier,
+    status = EXCLUDED.status,
+    stage = EXCLUDED.stage,
+    priority = EXCLUDED.priority,
+    category = EXCLUDED.category,
+    request_date = EXCLUDED.request_date,
+    date = EXCLUDED.date,
+    orden_compra = EXCLUDED.orden_compra,
+    oc_number = EXCLUDED.oc_number,
+    folio_mercado_publico = EXCLUDED.folio_mercado_publico,
+    responsible_user = EXCLUDED.responsible_user,
+    reception_status = EXCLUDED.reception_status,
+    invoice_status = EXCLUDED.invoice_status,
+    data = EXCLUDED.data;
+
+
+-- --- REUNIONES Y ACUERDOS ---
+
+INSERT INTO public.meetings (id, program_id, title, date, time, start_time, location, status, summary, notes, participants, attendees, agreements, commitments, data)
+VALUES ('meet_cpu_01', 'praps_cpu', 'Comité Técnico Comunal de Cuidados Paliativos Universales', '2026-09-24', '10:00', '10:00', 'Sala de Reuniones DISAM Quilicura / Zoom Híbrido', 'finalizada', '', '', '[{"id":"part_1","name":"Klaus Bauer","role":"Referente Técnico PRAPS","organization":"DISAM Quilicura","attended":true},{"id":"part_2","name":"Dra. Marcela Vidal R.","role":"Médico Encargada CPU","organization":"CESFAM Manuel Bustos","attended":true},{"id":"part_3","name":"E.U. Rodrigo Morales T.","role":"Enfermero Coordinador","organization":"CESFAM Irene Frei","attended":true},{"id":"part_4","name":"Dra. Jefa de Sector","role":"Jefa de Sector","organization":"CESFAM Salvador Allende","attended":true}]'::jsonb, '[{"id":"part_1","name":"Klaus Bauer","role":"Referente Técnico PRAPS","organization":"DISAM Quilicura","attended":true},{"id":"part_2","name":"Dra. Marcela Vidal R.","role":"Médico Encargada CPU","organization":"CESFAM Manuel Bustos","attended":true},{"id":"part_3","name":"E.U. Rodrigo Morales T.","role":"Enfermero Coordinador","organization":"CESFAM Irene Frei","attended":true},{"id":"part_4","name":"Dra. Jefa de Sector","role":"Jefa de Sector","organization":"CESFAM Salvador Allende","attended":true}]'::jsonb, '[{"id":"agr_cpu_1","meetingId":"meet_cpu_01","description":"Estandarizar protocolo de derivación rápida a Hospital San José para pacientes no oncológicos con dolor refractario.","decisionType":"acuerdo","orderIndex":1},{"id":"agr_cpu_2","meetingId":"meet_cpu_01","description":"Establecer stock de reserva crítico de morfina 10mg en los 3 CESFAM comunales.","decisionType":"definicion","orderIndex":2}]'::jsonb, '[{"id":"com_cpu_1","meetingId":"meet_cpu_01","agreementId":"agr_cpu_1","description":"Enviar propuesta de flujograma CPU No Oncológico a directores de los 3 CESFAM","responsible":"Klaus Bauer","deadline":"2026-08-21","priority":"alta","isUrgent":false,"status":"pendiente"},{"id":"com_cpu_2","meetingId":"meet_cpu_01","agreementId":"agr_cpu_2","description":"Coordinar con farmacia central stock de seguridad de ampollas de morfina 10mg","responsible":"E.U. Rodrigo Morales T.","deadline":"2026-08-22","priority":"alta","isUrgent":false,"status":"pendiente"}]'::jsonb, '{"id":"meet_cpu_01","programId":"praps_cpu","type":"comite","status":"finalizada","title":"Comité Técnico Comunal de Cuidados Paliativos Universales","dateTime":"2026-08-18T10:00:00","durationMinutes":90,"location":"Sala de Reuniones DISAM Quilicura / Zoom Híbrido","participants":[{"id":"part_1","name":"Klaus Bauer","role":"Referente Técnico PRAPS","organization":"DISAM Quilicura","attended":true},{"id":"part_2","name":"Dra. Marcela Vidal R.","role":"Médico Encargada CPU","organization":"CESFAM Manuel Bustos","attended":true},{"id":"part_3","name":"E.U. Rodrigo Morales T.","role":"Enfermero Coordinador","organization":"CESFAM Irene Frei","attended":true},{"id":"part_4","name":"Dra. Jefa de Sector","role":"Jefa de Sector","organization":"CESFAM Salvador Allende","attended":true}],"objective":"Analizar casos complejos de pacientes no oncológicos con dolor refractario y definir protocolo de enlace con Hospital San José.","notes":"Revisión exhaustiva de la nómina de 14 pacientes en seguimiento activo domiciliario y stock de fármacos de segunda línea (morfina, fentanilo, pregabalina). Se detecta necesidad de estandarizar derivación interconsultas.","agreements":[{"id":"agr_cpu_1","meetingId":"meet_cpu_01","description":"Estandarizar protocolo de derivación rápida a Hospital San José para pacientes no oncológicos con dolor refractario.","decisionType":"acuerdo","orderIndex":1},{"id":"agr_cpu_2","meetingId":"meet_cpu_01","description":"Establecer stock de reserva crítico de morfina 10mg en los 3 CESFAM comunales.","decisionType":"definicion","orderIndex":2}],"commitments":[{"id":"com_cpu_1","meetingId":"meet_cpu_01","agreementId":"agr_cpu_1","description":"Enviar propuesta de flujograma CPU No Oncológico a directores de los 3 CESFAM","responsible":"Klaus Bauer","deadline":"2026-08-21","priority":"alta","isUrgent":false,"status":"pendiente"},{"id":"com_cpu_2","meetingId":"meet_cpu_01","agreementId":"agr_cpu_2","description":"Coordinar con farmacia central stock de seguridad de ampollas de morfina 10mg","responsible":"E.U. Rodrigo Morales T.","deadline":"2026-08-22","priority":"alta","isUrgent":false,"status":"pendiente"}],"createdAt":"2026-08-10T14:00:00Z","updatedAt":"2026-08-18T12:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    date = EXCLUDED.date,
+    time = EXCLUDED.time,
+    start_time = EXCLUDED.start_time,
+    location = EXCLUDED.location,
+    status = EXCLUDED.status,
+    summary = EXCLUDED.summary,
+    notes = EXCLUDED.notes,
+    participants = EXCLUDED.participants,
+    attendees = EXCLUDED.attendees,
+    agreements = EXCLUDED.agreements,
+    commitments = EXCLUDED.commitments,
+    data = EXCLUDED.data;
+
+INSERT INTO public.meetings (id, program_id, title, date, time, start_time, location, status, summary, notes, participants, attendees, agreements, commitments, data)
+VALUES ('meet_ssmn_01', 'praps_imagenes', 'Mesa de Trabajo Imágenes Diagnósticas SSMN y Referentes Comunales', '2026-09-24', '10:00', '10:00', 'Auditorio Servicio de Salud Metropolitano Norte (SSMN)', 'finalizada', '', '', '[{"id":"part_5","name":"Klaus Bauer","role":"Referente Técnico PRAPS","organization":"DISAM Quilicura","attended":true},{"id":"part_6","name":"Dra. Referente SSMN Imágenes","role":"Encargada Imágenes","organization":"SSMN","attended":true},{"id":"part_7","name":"Gerente Operaciones Prestador","role":"Representante","organization":"Centro Radiológico Convenio","attended":true}]'::jsonb, '[{"id":"part_5","name":"Klaus Bauer","role":"Referente Técnico PRAPS","organization":"DISAM Quilicura","attended":true},{"id":"part_6","name":"Dra. Referente SSMN Imágenes","role":"Encargada Imágenes","organization":"SSMN","attended":true},{"id":"part_7","name":"Gerente Operaciones Prestador","role":"Representante","organization":"Centro Radiológico Convenio","attended":true}]'::jsonb, '[{"id":"agr_img_1","meetingId":"meet_ssmn_01","description":"Prestador enviará cronograma final de clínicas móviles para mamografías antes del 16 de agosto.","decisionType":"acuerdo","orderIndex":1}]'::jsonb, '[{"id":"com_img_1","meetingId":"meet_ssmn_01","agreementId":"agr_img_1","description":"Exigir al proveedor de mamografías el calendario de operativos móviles","responsible":"Klaus Bauer","deadline":"2026-08-16","priority":"critica","isUrgent":true,"status":"en_curso","taskId":"tsk_02"}]'::jsonb, '{"id":"meet_ssmn_01","programId":"praps_imagenes","type":"coordinacion","status":"finalizada","title":"Mesa de Trabajo Imágenes Diagnósticas SSMN y Referentes Comunales","dateTime":"2026-08-11T11:30:00","durationMinutes":60,"location":"Auditorio Servicio de Salud Metropolitano Norte (SSMN)","participants":[{"id":"part_5","name":"Klaus Bauer","role":"Referente Técnico PRAPS","organization":"DISAM Quilicura","attended":true},{"id":"part_6","name":"Dra. Referente SSMN Imágenes","role":"Encargada Imágenes","organization":"SSMN","attended":true},{"id":"part_7","name":"Gerente Operaciones Prestador","role":"Representante","organization":"Centro Radiológico Convenio","attended":true}],"objective":"Revisar brecha de mamografías en Quilicura y exigir plan de mitigación al prestador licitado.","notes":"El prestador licitado presentó su informe de capacidad técnica. Se compromete a habilitar una unidad móvil exclusiva para Quilicura los sábados de septiembre.","agreements":[{"id":"agr_img_1","meetingId":"meet_ssmn_01","description":"Prestador enviará cronograma final de clínicas móviles para mamografías antes del 16 de agosto.","decisionType":"acuerdo","orderIndex":1}],"commitments":[{"id":"com_img_1","meetingId":"meet_ssmn_01","agreementId":"agr_img_1","description":"Exigir al proveedor de mamografías el calendario de operativos móviles","responsible":"Klaus Bauer","deadline":"2026-08-16","priority":"critica","isUrgent":true,"status":"en_curso","taskId":"tsk_02"}],"createdAt":"2026-08-11T15:00:00Z","updatedAt":"2026-08-11T15:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    date = EXCLUDED.date,
+    time = EXCLUDED.time,
+    start_time = EXCLUDED.start_time,
+    location = EXCLUDED.location,
+    status = EXCLUDED.status,
+    summary = EXCLUDED.summary,
+    notes = EXCLUDED.notes,
+    participants = EXCLUDED.participants,
+    attendees = EXCLUDED.attendees,
+    agreements = EXCLUDED.agreements,
+    commitments = EXCLUDED.commitments,
+    data = EXCLUDED.data;
+
+INSERT INTO public.meetings (id, program_id, title, date, time, start_time, location, status, summary, notes, participants, attendees, agreements, commitments, data)
+VALUES ('meet_rehab_01', 'praps_rehab', 'Capacitación PRAPS: Manejo Integral y Prescripción de Ayudas Técnicas RBC', '2026-09-24', '10:00', '10:00', 'Sala de Capacitaciones CESFAM Manuel Bustos', 'programada', '', '', '[{"id":"part_8","name":"Klgo. Felipe Santander V.","role":"Encargado Sala RBC","organization":"CESFAM Manuel Bustos","attended":false},{"id":"part_9","name":"Klaus Bauer","role":"Referente Técnico PRAPS","organization":"DISAM Quilicura","attended":false},{"id":"part_10","name":"Equipo Kinesiólogos y Terapeutas Comunales","role":"Profesionales RBC","organization":"Red Quilicura","attended":false}]'::jsonb, '[{"id":"part_8","name":"Klgo. Felipe Santander V.","role":"Encargado Sala RBC","organization":"CESFAM Manuel Bustos","attended":false},{"id":"part_9","name":"Klaus Bauer","role":"Referente Técnico PRAPS","organization":"DISAM Quilicura","attended":false},{"id":"part_10","name":"Equipo Kinesiólogos y Terapeutas Comunales","role":"Profesionales RBC","organization":"Red Quilicura","attended":false}]'::jsonb, '[{"id":"agr_rh_1","meetingId":"meet_rehab_01","description":"Centralizar fichas de postulación SENADIS con visto bueno único de terapeuta ocupacional coordinador.","decisionType":"definicion","orderIndex":1}]'::jsonb, '[{"id":"com_rh_1","meetingId":"meet_rehab_01","description":"Elaborar guía resumen de 1 página con requisitos para postulación a ayudas técnicas SENADIS","responsible":"Klgo. Felipe Santander V.","deadline":"2026-08-26","priority":"media","isUrgent":false,"status":"pendiente"}]'::jsonb, '{"id":"meet_rehab_01","programId":"praps_rehab","type":"capacitacion","status":"programada","title":"Capacitación PRAPS: Manejo Integral y Prescripción de Ayudas Técnicas RBC","dateTime":"2026-08-20T14:30:00","durationMinutes":120,"location":"Sala de Capacitaciones CESFAM Manuel Bustos","participants":[{"id":"part_8","name":"Klgo. Felipe Santander V.","role":"Encargado Sala RBC","organization":"CESFAM Manuel Bustos","attended":false},{"id":"part_9","name":"Klaus Bauer","role":"Referente Técnico PRAPS","organization":"DISAM Quilicura","attended":false},{"id":"part_10","name":"Equipo Kinesiólogos y Terapeutas Comunales","role":"Profesionales RBC","organization":"Red Quilicura","attended":false}],"objective":"Actualizar guías de postulación SENADIS y prescripción GES de bastones canadienses y sillas de ruedas.","notes":"Capacitación teórico-práctica para reducir tiempo de espera en entrega de ayudas técnicas y unificar criterios de evaluación Barthel.","agreements":[{"id":"agr_rh_1","meetingId":"meet_rehab_01","description":"Centralizar fichas de postulación SENADIS con visto bueno único de terapeuta ocupacional coordinador.","decisionType":"definicion","orderIndex":1}],"commitments":[{"id":"com_rh_1","meetingId":"meet_rehab_01","description":"Elaborar guía resumen de 1 página con requisitos para postulación a ayudas técnicas SENADIS","responsible":"Klgo. Felipe Santander V.","deadline":"2026-08-26","priority":"media","isUrgent":false,"status":"pendiente"}],"createdAt":"2026-08-12T09:00:00Z","updatedAt":"2026-08-12T09:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    date = EXCLUDED.date,
+    time = EXCLUDED.time,
+    start_time = EXCLUDED.start_time,
+    location = EXCLUDED.location,
+    status = EXCLUDED.status,
+    summary = EXCLUDED.summary,
+    notes = EXCLUDED.notes,
+    participants = EXCLUDED.participants,
+    attendees = EXCLUDED.attendees,
+    agreements = EXCLUDED.agreements,
+    commitments = EXCLUDED.commitments,
+    data = EXCLUDED.data;
+
+INSERT INTO public.meetings (id, program_id, title, date, time, start_time, location, status, summary, notes, participants, attendees, agreements, commitments, data)
+VALUES ('meet_mayores_01', 'prog_personas_mayores', 'Consultoría y Asesoría Técnica ELEAM: Validación Expedientes SENAMA', '2026-09-24', '10:00', '10:00', 'Oficina Social DISAM Quilicura', 'finalizada', '', '', '[{"id":"part_11","name":"Klaus Bauer","role":"Referente Técnico PRAPS","organization":"DISAM Quilicura","attended":true},{"id":"part_12","name":"T.S. Lorena Abarca M.","role":"Trabajadora Social","organization":"CESFAM Salvador Allende","attended":true},{"id":"part_13","name":"Asesor Técnico SENAMA RM","role":"Consultor Experto","organization":"SENAMA Regional","attended":true}]'::jsonb, '[{"id":"part_11","name":"Klaus Bauer","role":"Referente Técnico PRAPS","organization":"DISAM Quilicura","attended":true},{"id":"part_12","name":"T.S. Lorena Abarca M.","role":"Trabajadora Social","organization":"CESFAM Salvador Allende","attended":true},{"id":"part_13","name":"Asesor Técnico SENAMA RM","role":"Consultor Experto","organization":"SENAMA Regional","attended":true}]'::jsonb, '[{"id":"agr_may_1","meetingId":"meet_mayores_01","description":"Completar evaluación médica de capacidad funcional antes del 19 de agosto para ingresar expediente definitivo.","decisionType":"acuerdo","orderIndex":1}]'::jsonb, '[{"id":"com_may_1","meetingId":"meet_mayores_01","agreementId":"agr_may_1","description":"Obtener informe médico actualizado para caso ELEAM-QLC-2026-04 en CESFAM Salvador Allende","responsible":"T.S. Lorena Abarca M.","deadline":"2026-08-19","priority":"alta","isUrgent":false,"status":"pendiente"}]'::jsonb, '{"id":"meet_mayores_01","programId":"prog_personas_mayores","type":"consultoria","status":"finalizada","title":"Consultoría y Asesoría Técnica ELEAM: Validación Expedientes SENAMA","dateTime":"2026-08-14T09:00:00","durationMinutes":75,"location":"Oficina Social DISAM Quilicura","participants":[{"id":"part_11","name":"Klaus Bauer","role":"Referente Técnico PRAPS","organization":"DISAM Quilicura","attended":true},{"id":"part_12","name":"T.S. Lorena Abarca M.","role":"Trabajadora Social","organization":"CESFAM Salvador Allende","attended":true},{"id":"part_13","name":"Asesor Técnico SENAMA RM","role":"Consultor Experto","organization":"SENAMA Regional","attended":true}],"objective":"Revisar estado de 4 expedientes de postulación ELEAM SENAMA con observaciones de informe social y médico.","notes":"Se revisaron casos de pacientes con abandono familiar y deterioro cognitivo severo que requieren cupo prioritario comunal.","agreements":[{"id":"agr_may_1","meetingId":"meet_mayores_01","description":"Completar evaluación médica de capacidad funcional antes del 19 de agosto para ingresar expediente definitivo.","decisionType":"acuerdo","orderIndex":1}],"commitments":[{"id":"com_may_1","meetingId":"meet_mayores_01","agreementId":"agr_may_1","description":"Obtener informe médico actualizado para caso ELEAM-QLC-2026-04 en CESFAM Salvador Allende","responsible":"T.S. Lorena Abarca M.","deadline":"2026-08-19","priority":"alta","isUrgent":false,"status":"pendiente"}],"createdAt":"2026-08-14T12:00:00Z","updatedAt":"2026-08-14T12:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    title = EXCLUDED.title,
+    date = EXCLUDED.date,
+    time = EXCLUDED.time,
+    start_time = EXCLUDED.start_time,
+    location = EXCLUDED.location,
+    status = EXCLUDED.status,
+    summary = EXCLUDED.summary,
+    notes = EXCLUDED.notes,
+    participants = EXCLUDED.participants,
+    attendees = EXCLUDED.attendees,
+    agreements = EXCLUDED.agreements,
+    commitments = EXCLUDED.commitments,
+    data = EXCLUDED.data;
+
+
+-- --- CORREOS Y COMUNICACIONES ---
+
+INSERT INTO public.emails (id, program_id, from_email, to_email, subject, body, status, priority, type, date, due_date, archived, data)
+VALUES ('em_01', 'praps_imagenes', 'Dra. Patricia Muñoz (Referente SSMN)', 'referente.imagenes@ssmn.redsalud.gob.cl', 'Solicitud de informe de brechas de mamografías Quilicura - Ordinario SSMN 782', '', 'pendiente', 'critica', 'oficio', '2026-09-24T11:31:31.701Z', NULL, false, '{"id":"em_01","type":"oficio","subject":"Solicitud de informe de brechas de mamografías Quilicura - Ordinario SSMN 782","sender":"Dra. Patricia Muñoz (Referente SSMN)","recipient":"referente.imagenes@ssmn.redsalud.gob.cl","programId":"praps_imagenes","action":"responder","priority":"critica","receivedOrSentDate":"2026-08-10","deadline":"2026-08-15","responsible":"Referente Imágenes DISAM","requiredAction":"Consolidar atenciones no realizadas por el proveedor privado y remitir oficio de respuesta.","status":"pendiente","notes":"Adjuntar detalle de atenciones no realizadas por el proveedor privado y plan de mitigación comunal.","followUps":[{"id":"fu_01","communicationId":"em_01","type":"informacion_solicitada","note":"Se solicitó a estadísticas DISAM el conteo consolidado de órdenes derivadas sin atención.","createdAt":"2026-08-12T10:00:00Z","createdBy":"Referente Imágenes DISAM"}],"attachments":[{"id":"att_01","communicationId":"em_01","name":"Ord_782_SSMN_Informe_Mamografias.pdf","size":"1.4 MB","type":"application/pdf","uploadedAt":"2026-08-10T11:00:00Z","uploadedBy":"Sistema SSMN"}],"createdAt":"2026-08-10T10:00:00Z","updatedAt":"2026-08-14T11:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    from_email = EXCLUDED.from_email,
+    to_email = EXCLUDED.to_email,
+    subject = EXCLUDED.subject,
+    body = EXCLUDED.body,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    type = EXCLUDED.type,
+    date = EXCLUDED.date,
+    due_date = EXCLUDED.due_date,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.emails (id, program_id, from_email, to_email, subject, body, status, priority, type, date, due_date, archived, data)
+VALUES ('em_02', 'praps_cpu', 'Klaus Bauer (DISAM)', 'ventas@drogueriamedica.cl; adquisiciones@quilicurasalud.cl', 'Reiteración compra urgente de apósitos CPU - REQ-CPU-2026-08', '', 'en_gestion', 'alta', 'requerimiento', '2026-09-24T11:31:31.701Z', NULL, false, '{"id":"em_02","type":"requerimiento","subject":"Reiteración compra urgente de apósitos CPU - REQ-CPU-2026-08","sender":"Klaus Bauer (DISAM)","recipient":"ventas@drogueriamedica.cl; adquisiciones@quilicurasalud.cl","programId":"praps_cpu","action":"enviar","priority":"alta","receivedOrSentDate":"2026-08-11","deadline":"2026-08-12","responsible":"Klaus Bauer","requiredAction":"Confirmar número de guía de despacho y fecha estimada de entrega con Adquisiciones.","status":"en_gestion","notes":"Exigir número de guía de despacho y fecha estimada de entrega.","followUps":[{"id":"fu_02_1","communicationId":"em_02","type":"contacto","note":"Llamada telefónica a ejecutiva de Droguería Médica; informan despacho programado para el 16/08.","createdAt":"2026-08-13T16:00:00Z","createdBy":"Klaus Bauer"},{"id":"fu_02_2","communicationId":"em_02","type":"recordatorio","note":"Se envía correo reiterativo a Adquisiciones para verificar recepción conforme en bodega central.","createdAt":"2026-08-14T09:30:00Z","createdBy":"Klaus Bauer"}],"attachments":[{"id":"att_02","communicationId":"em_02","name":"Orden_Compra_6482_Apositos.pdf","size":"640 KB","type":"application/pdf","uploadedAt":"2026-08-11T16:00:00Z","uploadedBy":"Klaus Bauer"}],"createdAt":"2026-08-11T16:00:00Z","updatedAt":"2026-08-14T09:30:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    from_email = EXCLUDED.from_email,
+    to_email = EXCLUDED.to_email,
+    subject = EXCLUDED.subject,
+    body = EXCLUDED.body,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    type = EXCLUDED.type,
+    date = EXCLUDED.date,
+    due_date = EXCLUDED.due_date,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.emails (id, program_id, from_email, to_email, subject, body, status, priority, type, date, due_date, archived, data)
+VALUES ('em_03', 'prog_personas_mayores', 'T.S. Lorena Abarca M.', 'unidad.eleam@senama.gob.cl', 'Coordinación con SENAMA para cupo de emergencia ELEAM caso QLC-2026-02', '', 'en_gestion', 'alta', 'solicitud', '2026-09-24T11:31:31.701Z', NULL, false, '{"id":"em_03","type":"solicitud","subject":"Coordinación con SENAMA para cupo de emergencia ELEAM caso QLC-2026-02","sender":"T.S. Lorena Abarca M.","recipient":"unidad.eleam@senama.gob.cl","programId":"prog_personas_mayores","action":"seguimiento","priority":"alta","receivedOrSentDate":"2026-08-07","deadline":"2026-08-18","responsible":"T.S. Lorena Abarca M.","requiredAction":"Verificar resolución de la comisión evaluadora de SENAMA e ingresar ficha clínica preliminar.","status":"en_gestion","notes":"Enviado informe social el 07/08. Esperando respuesta de comisión evaluadora.","followUps":[{"id":"fu_03","communicationId":"em_03","type":"observacion","note":"Comisión evalúa el caso el martes 18. Ficha social y médica ya validadas por dirección de CESFAM.","createdAt":"2026-08-10T12:00:00Z","createdBy":"T.S. Lorena Abarca M."}],"attachments":[{"id":"att_03_1","communicationId":"em_03","name":"Informe_Social_ELEAM_QLC_02.pdf","size":"1.1 MB","type":"application/pdf","uploadedAt":"2026-08-07T12:00:00Z","uploadedBy":"T.S. Lorena Abarca M."}],"createdAt":"2026-08-07T12:00:00Z","updatedAt":"2026-08-10T12:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    from_email = EXCLUDED.from_email,
+    to_email = EXCLUDED.to_email,
+    subject = EXCLUDED.subject,
+    body = EXCLUDED.body,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    type = EXCLUDED.type,
+    date = EXCLUDED.date,
+    due_date = EXCLUDED.due_date,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.emails (id, program_id, from_email, to_email, subject, body, status, priority, type, date, due_date, archived, data)
+VALUES ('em_04', 'praps_mas_ama', 'Klgo. Gonzalo Tapia G.', 'estadistica@ssmn.redsalud.gob.cl', 'Envío de planillas REM A28 de MAS AMA consolidado segundo trimestre', '', 'pendiente', 'media', 'correo_por_enviar', '2026-09-24T11:31:31.701Z', NULL, false, '{"id":"em_04","type":"correo_por_enviar","subject":"Envío de planillas REM A28 de MAS AMA consolidado segundo trimestre","sender":"Klgo. Gonzalo Tapia G.","recipient":"estadistica@ssmn.redsalud.gob.cl","programId":"praps_mas_ama","action":"enviar","priority":"media","receivedOrSentDate":"2026-08-10","deadline":"2026-08-25","responsible":"Klgo. Gonzalo Tapia G.","requiredAction":"Validar corte de talleres de CESFAM Salvador Allende y despachar archivo consolidado.","status":"pendiente","notes":"Falta validar datos de un taller de CESFAM Salvador Allende.","followUps":[],"attachments":[{"id":"att_04","communicationId":"em_04","name":"REM_A28_MAS_AMA_Borrador.xlsx","size":"420 KB","type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","uploadedAt":"2026-08-10T14:00:00Z","uploadedBy":"Klgo. Gonzalo Tapia G."}],"createdAt":"2026-08-10T14:00:00Z","updatedAt":"2026-08-10T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    from_email = EXCLUDED.from_email,
+    to_email = EXCLUDED.to_email,
+    subject = EXCLUDED.subject,
+    body = EXCLUDED.body,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    type = EXCLUDED.type,
+    date = EXCLUDED.date,
+    due_date = EXCLUDED.due_date,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.emails (id, program_id, from_email, to_email, subject, body, status, priority, type, date, due_date, archived, data)
+VALUES ('em_05', 'praps_rehab', 'Director DISAM Quilicura', 'subdireccion.gestion@ssmn.redsalud.gob.cl', 'Respuesta Ordinario 412 - Modificación presupuestaria programa Rehabilitación', '', 'cerrado', 'media', 'oficio', '2026-09-24T11:31:31.701Z', NULL, false, '{"id":"em_05","type":"oficio","subject":"Respuesta Ordinario 412 - Modificación presupuestaria programa Rehabilitación","sender":"Director DISAM Quilicura","recipient":"subdireccion.gestion@ssmn.redsalud.gob.cl","programId":"praps_rehab","action":"responder","priority":"media","receivedOrSentDate":"2026-08-01","deadline":"2026-08-10","responsible":"Klgo. Felipe Santander V.","requiredAction":"Archivar copia de oficio y decreto de modificación en carpeta compartida.","status":"cerrado","notes":"Oficio tramitado y aceptado por SSMN el 09/08/2026.","followUps":[{"id":"fu_05","communicationId":"em_05","type":"respuesta_enviada","note":"Oficio N° 412 remitido vía oficina de partes digital con firma electrónica avanzada.","createdAt":"2026-08-09T15:00:00Z","createdBy":"Klgo. Felipe Santander V."}],"attachments":[{"id":"att_05","communicationId":"em_05","name":"Oficio_412_Aprobado_SSMN.pdf","size":"890 KB","type":"application/pdf","uploadedAt":"2026-08-09T15:30:00Z","uploadedBy":"Klgo. Felipe Santander V."}],"createdAt":"2026-08-01T09:00:00Z","updatedAt":"2026-08-09T16:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    from_email = EXCLUDED.from_email,
+    to_email = EXCLUDED.to_email,
+    subject = EXCLUDED.subject,
+    body = EXCLUDED.body,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    type = EXCLUDED.type,
+    date = EXCLUDED.date,
+    due_date = EXCLUDED.due_date,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.emails (id, program_id, from_email, to_email, subject, body, status, priority, type, date, due_date, archived, data)
+VALUES ('em_06', 'praps_respiratoria', 'Referente Respiratorio SSMN', 'coordinacion.respiratoria@quilicurasalud.cl', 'Instrucciones para auditoría clínica piloto sala ERA/IRA segundo semestre', '', 'en_gestion', 'alta', 'correo_recibido', '2026-09-24T11:31:31.701Z', NULL, false, '{"id":"em_06","type":"correo_recibido","subject":"Instrucciones para auditoría clínica piloto sala ERA/IRA segundo semestre","sender":"Referente Respiratorio SSMN","recipient":"coordinacion.respiratoria@quilicurasalud.cl","programId":"praps_respiratoria","action":"revisar","priority":"alta","receivedOrSentDate":"2026-08-14","deadline":"2026-08-16","responsible":"Klga. Valentina Jerez F.","requiredAction":"Revisar pauta de cotejo enviada por SSMN y convocar reunión técnica con equipos de sala ERA/IRA.","status":"en_gestion","notes":"Se adjunta pauta ministerial de auditoría de historias clínicas.","followUps":[{"id":"fu_06","communicationId":"em_06","type":"derivacion","note":"Se envía pauta a encargados de sala de CESFAM Manuel Bustos y CESFAM Quilicura.","createdAt":"2026-08-14T14:30:00Z","createdBy":"Klga. Valentina Jerez F."}],"attachments":[{"id":"att_06","communicationId":"em_06","name":"Pauta_Auditoria_Clinica_Respiratorio_2026.pdf","size":"1.8 MB","type":"application/pdf","uploadedAt":"2026-08-14T11:00:00Z","uploadedBy":"Sistema SSMN"}],"createdAt":"2026-08-14T10:00:00Z","updatedAt":"2026-08-14T14:30:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    from_email = EXCLUDED.from_email,
+    to_email = EXCLUDED.to_email,
+    subject = EXCLUDED.subject,
+    body = EXCLUDED.body,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    type = EXCLUDED.type,
+    date = EXCLUDED.date,
+    due_date = EXCLUDED.due_date,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+
+-- --- DIRECTORIO DE CONTACTOS ---
+
+INSERT INTO public.contacts (id, program_id, program_ids, name, last_name, role, institution, email, phone, contact_type, data)
+VALUES ('ct_01', 'praps_cpu', '["praps_cpu"]'::jsonb, 'Marcela', 'Vidal Riquelme', 'Referente Técnico PRAPS CPU', 'Servicio de Salud Metropolitano Norte (SSMN)', 'marcela.vidal@redsalud.gob.cl', '+56 2 2574 8120', 'Servicio de Salud', '{"id":"ct_01","name":"Marcela","lastName":"Vidal Riquelme","role":"Referente Técnico PRAPS CPU","profession":"Médico Paliativista","institution":"Servicio de Salud Metropolitano Norte (SSMN)","unit":"Depto. Técnico de Salud y Redes Asistenciales","phone":"+56 2 2574 8120","annex":"4812","mobile":"+56 9 8412 3901","email":"marcela.vidal@redsalud.gob.cl","contactType":"Servicio de Salud","programIds":["praps_cpu"],"notes":"Contraparte técnica ministerial y del SSMN para validación de canastas, criterios de ingreso y compras de fármacos opioides.","isActive":true,"isFrequent":true,"createdAt":"2026-01-10T08:30:00Z","updatedAt":"2026-08-01T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    name = EXCLUDED.name,
+    last_name = EXCLUDED.last_name,
+    role = EXCLUDED.role,
+    institution = EXCLUDED.institution,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
+    contact_type = EXCLUDED.contact_type,
+    data = EXCLUDED.data;
+
+INSERT INTO public.contacts (id, program_id, program_ids, name, last_name, role, institution, email, phone, contact_type, data)
+VALUES ('ct_02', 'praps_cpu', '["praps_cpu","praps_rehab","praps_imagenes","praps_mas_ama","praps_respiratoria","prog_personas_mayores"]'::jsonb, 'Rodrigo', 'Valenzuela Morales', 'Encargado de Convenios y Transferencias PRAPS', 'Servicio de Salud Metropolitano Norte (SSMN)', 'rvalenzuela.ssmn@redsalud.gob.cl', '+56 2 2574 8090', 'Servicio de Salud', '{"id":"ct_02","name":"Rodrigo","lastName":"Valenzuela Morales","role":"Encargado de Convenios y Transferencias PRAPS","profession":"Administrador Público","institution":"Servicio de Salud Metropolitano Norte (SSMN)","unit":"Subdirección Administrativa / Finanzas","phone":"+56 2 2574 8090","annex":"4809","mobile":"+56 9 7321 0044","email":"rvalenzuela.ssmn@redsalud.gob.cl","contactType":"Servicio de Salud","programIds":["praps_cpu","praps_rehab","praps_imagenes","praps_mas_ama","praps_respiratoria","prog_personas_mayores"],"notes":"Tramita resoluciones exentas de traspaso de remesas, convenios modificatorios y firma de adendas.","isActive":true,"isFrequent":true,"createdAt":"2026-01-12T09:00:00Z","updatedAt":"2026-07-20T11:30:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    name = EXCLUDED.name,
+    last_name = EXCLUDED.last_name,
+    role = EXCLUDED.role,
+    institution = EXCLUDED.institution,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
+    contact_type = EXCLUDED.contact_type,
+    data = EXCLUDED.data;
+
+INSERT INTO public.contacts (id, program_id, program_ids, name, last_name, role, institution, email, phone, contact_type, data)
+VALUES ('ct_03', 'praps_cpu', '["praps_cpu"]'::jsonb, 'Natalia', 'Oyarzún Santander', 'Jefa Unidad de Cuidados Paliativos y Alivio del Dolor', 'Hospital San José', 'noyarzun.hsj@redsalud.gob.cl', '+56 2 2574 3400', 'Hospital', '{"id":"ct_03","name":"Natalia","lastName":"Oyarzún Santander","role":"Jefa Unidad de Cuidados Paliativos y Alivio del Dolor","profession":"Médico Cirujano Oncólogo","institution":"Hospital San José","unit":"Servicio de Medicina / Cuidados Paliativos","phone":"+56 2 2574 3400","annex":"3412","mobile":"+56 9 9234 1188","email":"noyarzun.hsj@redsalud.gob.cl","contactType":"Hospital","programIds":["praps_cpu"],"notes":"Coordinación de contrarreferencia oncológica, sesiones clínicas de enlace hospitalario y pacientes complejos no oncológicos.","isActive":true,"isFrequent":true,"createdAt":"2026-01-15T10:00:00Z","updatedAt":"2026-08-10T14:20:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    name = EXCLUDED.name,
+    last_name = EXCLUDED.last_name,
+    role = EXCLUDED.role,
+    institution = EXCLUDED.institution,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
+    contact_type = EXCLUDED.contact_type,
+    data = EXCLUDED.data;
+
+INSERT INTO public.contacts (id, program_id, program_ids, name, last_name, role, institution, email, phone, contact_type, data)
+VALUES ('ct_04', 'praps_cpu', '[]'::jsonb, 'Marcelo', 'Echeverría Gómez', 'Director de Salud Municipal', 'Municipalidad de Quilicura / DESAM', 'direccion.salud@quilicurasalud.cl', '+56 2 2366 6700', 'DESAM', '{"id":"ct_04","name":"Marcelo","lastName":"Echeverría Gómez","role":"Director de Salud Municipal","profession":"Médico Salubrista","institution":"Municipalidad de Quilicura / DESAM","unit":"Dirección Comunal de Salud","phone":"+56 2 2366 6700","annex":"6710","mobile":"+56 9 9882 1001","email":"direccion.salud@quilicurasalud.cl","contactType":"DESAM","programIds":[],"notes":"Aprobación final de decretos alcaldicios, ordenamiento de dotación y priorización presupuestaria comunal.","isActive":true,"isFrequent":true,"createdAt":"2026-01-05T08:00:00Z","updatedAt":"2026-08-01T09:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    name = EXCLUDED.name,
+    last_name = EXCLUDED.last_name,
+    role = EXCLUDED.role,
+    institution = EXCLUDED.institution,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
+    contact_type = EXCLUDED.contact_type,
+    data = EXCLUDED.data;
+
+INSERT INTO public.contacts (id, program_id, program_ids, name, last_name, role, institution, email, phone, contact_type, data)
+VALUES ('ct_05', 'praps_cpu', '["praps_cpu","praps_rehab","prog_personas_mayores","praps_mas_ama"]'::jsonb, 'Claudia', 'Fuentes Bravo', 'Directora Cesfam Manuel Bustos Huerta', 'Cesfam Manuel Bustos Huerta', 'direccion.mbh@quilicurasalud.cl', '+56 2 2366 6800', 'APS', '{"id":"ct_05","name":"Claudia","lastName":"Fuentes Bravo","role":"Directora Cesfam Manuel Bustos Huerta","profession":"Médico Cirujano","institution":"Cesfam Manuel Bustos Huerta","unit":"Dirección del Establecimiento","phone":"+56 2 2366 6800","annex":"6801","mobile":"+56 9 8765 4321","email":"direccion.mbh@quilicurasalud.cl","contactType":"APS","programIds":["praps_cpu","praps_rehab","prog_personas_mayores","praps_mas_ama"],"notes":"Coordinación técnica y territorial de equipos de sector y visitas domiciliarias integrales.","isActive":true,"isFrequent":false,"createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-07-28T16:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    name = EXCLUDED.name,
+    last_name = EXCLUDED.last_name,
+    role = EXCLUDED.role,
+    institution = EXCLUDED.institution,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
+    contact_type = EXCLUDED.contact_type,
+    data = EXCLUDED.data;
+
+INSERT INTO public.contacts (id, program_id, program_ids, name, last_name, role, institution, email, phone, contact_type, data)
+VALUES ('ct_06', 'praps_rehab', '["praps_rehab","prog_personas_mayores"]'::jsonb, 'Sebastián', 'Miranda Pinto', 'Encargado Comunal Sala de Rehabilitación (RBC)', 'Cesfam Salvador Allende Gossens', 'smiranda@quilicurasalud.cl', '+56 2 2366 6920', 'Profesional clínico', '{"id":"ct_06","name":"Sebastián","lastName":"Miranda Pinto","role":"Encargado Comunal Sala de Rehabilitación (RBC)","profession":"Kinesiólogo","institution":"Cesfam Salvador Allende Gossens","unit":"Unidad de Rehabilitación Comunal","phone":"+56 2 2366 6920","annex":"6922","mobile":"+56 9 7654 3210","email":"smiranda@quilicurasalud.cl","contactType":"Profesional clínico","programIds":["praps_rehab","prog_personas_mayores"],"notes":"Responsable operativo del registro REM de personas en rehabilitación y entrega de ayudas técnicas.","isActive":true,"isFrequent":true,"createdAt":"2026-01-20T11:00:00Z","updatedAt":"2026-08-05T12:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    name = EXCLUDED.name,
+    last_name = EXCLUDED.last_name,
+    role = EXCLUDED.role,
+    institution = EXCLUDED.institution,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
+    contact_type = EXCLUDED.contact_type,
+    data = EXCLUDED.data;
+
+INSERT INTO public.contacts (id, program_id, program_ids, name, last_name, role, institution, email, phone, contact_type, data)
+VALUES ('ct_07', 'prog_personas_mayores', '["prog_personas_mayores","praps_mas_ama"]'::jsonb, 'Lorena', 'Abarca Morales', 'Trabajadora Social / Encargada Comunal Personas Mayores', 'DISAM Quilicura', 'labarca@quilicurasalud.cl', '+56 2 2366 6750', 'Profesional clínico', '{"id":"ct_07","name":"Lorena","lastName":"Abarca Morales","role":"Trabajadora Social / Encargada Comunal Personas Mayores","profession":"Trabajadora Social","institution":"DISAM Quilicura","unit":"Gestión Comunitaria y Redes de Apoyo","phone":"+56 2 2366 6750","annex":"6755","mobile":"+56 9 8812 4477","email":"labarca@quilicurasalud.cl","contactType":"Profesional clínico","programIds":["prog_personas_mayores","praps_mas_ama"],"notes":"Tramitación de expedientes y postulaciones ELEAM en coordinación con SENAMA y juzgados de familia.","isActive":true,"isFrequent":true,"createdAt":"2026-01-18T10:00:00Z","updatedAt":"2026-08-12T15:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    name = EXCLUDED.name,
+    last_name = EXCLUDED.last_name,
+    role = EXCLUDED.role,
+    institution = EXCLUDED.institution,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
+    contact_type = EXCLUDED.contact_type,
+    data = EXCLUDED.data;
+
+INSERT INTO public.contacts (id, program_id, program_ids, name, last_name, role, institution, email, phone, contact_type, data)
+VALUES ('ct_08', 'praps_cpu', '["praps_cpu","praps_respiratoria"]'::jsonb, 'Jorge', 'Soto Alarcón', 'Ejecutivo Comercial Zona Norte', 'Indura S.A. (Gases Medicinales y Equipamiento)', 'jsoto@indura.cl', '+56 2 2530 3000', 'Proveedor', '{"id":"ct_08","name":"Jorge","lastName":"Soto Alarcón","role":"Ejecutivo Comercial Zona Norte","profession":"Ingeniero Comercial","institution":"Indura S.A. (Gases Medicinales y Equipamiento)","unit":"División Hospitalaria y Domiciliaria","phone":"+56 2 2530 3000","mobile":"+56 9 9123 4567","email":"jsoto@indura.cl","contactType":"Proveedor","programIds":["praps_cpu","praps_respiratoria"],"notes":"Contacto directo para convenios de provisión de cilindros de O2 medicinal y arriendo de concentradores domiciliarios.","isActive":true,"isFrequent":false,"createdAt":"2026-02-01T14:00:00Z","updatedAt":"2026-07-15T11:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    name = EXCLUDED.name,
+    last_name = EXCLUDED.last_name,
+    role = EXCLUDED.role,
+    institution = EXCLUDED.institution,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
+    contact_type = EXCLUDED.contact_type,
+    data = EXCLUDED.data;
+
+INSERT INTO public.contacts (id, program_id, program_ids, name, last_name, role, institution, email, phone, contact_type, data)
+VALUES ('ct_09', 'praps_cpu', '[]'::jsonb, 'Camila', 'Navarro Castro', 'Jefa de Adquisiciones y Abastecimiento Comunal', 'DISAM Quilicura', 'adquisiciones@quilicurasalud.cl', '+56 2 2366 6730', 'Administrativo', '{"id":"ct_09","name":"Camila","lastName":"Navarro Castro","role":"Jefa de Adquisiciones y Abastecimiento Comunal","profession":"Ingeniera en Administración de Empresas","institution":"DISAM Quilicura","unit":"Depto. de Adquisiciones y Licitaciones","phone":"+56 2 2366 6730","annex":"6733","mobile":"+56 9 8123 7799","email":"adquisiciones@quilicurasalud.cl","contactType":"Administrativo","programIds":[],"notes":"Gestión en Mercado Público, emisión de Órdenes de Compra, tramitación de decretos alcaldicios en CeroPapel.","isActive":true,"isFrequent":true,"createdAt":"2026-01-08T09:00:00Z","updatedAt":"2026-08-14T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    name = EXCLUDED.name,
+    last_name = EXCLUDED.last_name,
+    role = EXCLUDED.role,
+    institution = EXCLUDED.institution,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
+    contact_type = EXCLUDED.contact_type,
+    data = EXCLUDED.data;
+
+INSERT INTO public.contacts (id, program_id, program_ids, name, last_name, role, institution, email, phone, contact_type, data)
+VALUES ('ct_10', 'praps_cpu', '[]'::jsonb, 'Eduardo', 'Henríquez Peña', 'Jefe de Finanzas y Presupuesto', 'DISAM Quilicura', 'finanzas@quilicurasalud.cl', '+56 2 2366 6720', 'Finanzas', '{"id":"ct_10","name":"Eduardo","lastName":"Henríquez Peña","role":"Jefe de Finanzas y Presupuesto","profession":"Contador Auditor","institution":"DISAM Quilicura","unit":"Depto. de Finanzas","phone":"+56 2 2366 6720","annex":"6722","mobile":"+56 9 7711 2233","email":"finanzas@quilicurasalud.cl","contactType":"Finanzas","programIds":[],"notes":"Imputación presupuestaria subtítulos 21/22/29, informes de rendición SIGFE y validación de devengados.","isActive":true,"isFrequent":true,"createdAt":"2026-01-08T09:00:00Z","updatedAt":"2026-08-14T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    name = EXCLUDED.name,
+    last_name = EXCLUDED.last_name,
+    role = EXCLUDED.role,
+    institution = EXCLUDED.institution,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
+    contact_type = EXCLUDED.contact_type,
+    data = EXCLUDED.data;
+
+
+-- --- BIBLIOTECA DE DOCUMENTOS ---
+
+INSERT INTO public.documents (id, program_id, program_ids, title, description, category, document_type, document_number, status, file_name, file_size, upload_date, uploaded_by, archived, data)
+VALUES ('doc_01', 'praps_cpu', '["praps_cpu"]'::jsonb, 'Orientación Técnica PRAPS Cuidados Paliativos Universales 2026', 'Lineamientos técnicos y normativos del Ministerio de Salud y SSMN para la implementación del programa CPU en APS.', 'convenio', 'Orientación técnica', NULL, 'vigente', 'OT_PRAPS_CPU_2026.pdf', '3.4 MB', '2026-01-18', NULL, false, '{"id":"doc_01","title":"Orientación Técnica PRAPS Cuidados Paliativos Universales 2026","description":"Lineamientos técnicos y normativos del Ministerio de Salud y SSMN para la implementación del programa CPU en APS.","fileName":"OT_PRAPS_CPU_2026.pdf","fileSize":"3.4 MB","documentType":"Orientación técnica","programIds":["praps_cpu"],"documentDate":"2026-01-15","uploadDate":"2026-01-18","institution":"Servicio de Salud Metropolitano Norte (SSMN)","status":"vigente","expirationDate":"2026-12-31","responsible":"Dra. Marcela Vidal R.","version":"2026","notes":"Documento normativo base para canastas de atención, insumos y cálculo de dotación.","versions":[{"id":"ver_01_curr","versionNumber":"2026","fileName":"OT_PRAPS_CPU_2026.pdf","fileSize":"3.4 MB","uploadDate":"2026-01-18","uploadedBy":"Klaus Bauer","notes":"Versión oficial 2026 aprobada por MINSAL.","isCurrent":true},{"id":"ver_01_prev","versionNumber":"2025","fileName":"OT_PRAPS_CPU_2025_Anterior.pdf","fileSize":"3.1 MB","uploadDate":"2025-01-20","uploadedBy":"Klaus Bauer","notes":"Versión anterior 2025 conservada para fines de trazabilidad histórica.","isCurrent":false}],"createdAt":"2026-01-18T10:00:00Z","updatedAt":"2026-01-18T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    category = EXCLUDED.category,
+    document_type = EXCLUDED.document_type,
+    document_number = EXCLUDED.document_number,
+    status = EXCLUDED.status,
+    file_name = EXCLUDED.file_name,
+    file_size = EXCLUDED.file_size,
+    upload_date = EXCLUDED.upload_date,
+    uploaded_by = EXCLUDED.uploaded_by,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.documents (id, program_id, program_ids, title, description, category, document_type, document_number, status, file_name, file_size, upload_date, uploaded_by, archived, data)
+VALUES ('doc_02', 'praps_cpu', '["praps_cpu","praps_rehab","praps_imagenes","praps_mas_ama","praps_respiratoria","prog_personas_mayores"]'::jsonb, 'Convenio de Transferencia de Recursos PRAPS 2026 SSMN - Quilicura', 'Convenio marco anual firmado entre el Servicio de Salud Metropolitano Norte y la Ilustre Municipalidad de Quilicura.', 'convenio', 'Convenio', NULL, 'vigente', 'Convenio_PRAPS_Quilicura_2026_Firmado.pdf', '5.2 MB', '2026-02-15', NULL, false, '{"id":"doc_02","title":"Convenio de Transferencia de Recursos PRAPS 2026 SSMN - Quilicura","description":"Convenio marco anual firmado entre el Servicio de Salud Metropolitano Norte y la Ilustre Municipalidad de Quilicura.","fileName":"Convenio_PRAPS_Quilicura_2026_Firmado.pdf","fileSize":"5.2 MB","documentType":"Convenio","programIds":["praps_cpu","praps_rehab","praps_imagenes","praps_mas_ama","praps_respiratoria","prog_personas_mayores"],"documentDate":"2026-02-10","uploadDate":"2026-02-15","institution":"Servicio de Salud Metropolitano Norte","status":"vigente","expirationDate":"2026-12-31","responsible":"Rodrigo Valenzuela M.","version":"v1.0","notes":"Incluye presupuesto asignado, fechas de transferencias de remesas y compromisos de gestión.","createdAt":"2026-02-15T11:00:00Z","updatedAt":"2026-02-15T11:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    category = EXCLUDED.category,
+    document_type = EXCLUDED.document_type,
+    document_number = EXCLUDED.document_number,
+    status = EXCLUDED.status,
+    file_name = EXCLUDED.file_name,
+    file_size = EXCLUDED.file_size,
+    upload_date = EXCLUDED.upload_date,
+    uploaded_by = EXCLUDED.uploaded_by,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.documents (id, program_id, program_ids, title, description, category, document_type, document_number, status, file_name, file_size, upload_date, uploaded_by, archived, data)
+VALUES ('doc_03', 'praps_cpu', '["praps_cpu","praps_rehab","praps_imagenes"]'::jsonb, 'Res. Exenta N° 1482/2026 Asignación Presupuestaria por Componente Comunal', 'Resolución exenta del SSMN que aprueba la distribución presupuestaria y marco financiero de programas PRAPS 2026.', 'convenio', 'Resolución', NULL, 'vigente', 'Res_Exenta_1482_2026_SSMN.pdf', '1.8 MB', '2026-03-02', NULL, false, '{"id":"doc_03","title":"Res. Exenta N° 1482/2026 Asignación Presupuestaria por Componente Comunal","description":"Resolución exenta del SSMN que aprueba la distribución presupuestaria y marco financiero de programas PRAPS 2026.","fileName":"Res_Exenta_1482_2026_SSMN.pdf","fileSize":"1.8 MB","documentType":"Resolución","programIds":["praps_cpu","praps_rehab","praps_imagenes"],"documentDate":"2026-02-28","uploadDate":"2026-03-02","institution":"Servicio de Salud Metropolitano Norte","status":"vigente","expirationDate":"2026-12-31","responsible":"Eduardo Henríquez P.","version":"v1.0","notes":"Documento de respaldo legal para imputaciones contables en el sistema financiero municipal.","createdAt":"2026-03-02T09:30:00Z","updatedAt":"2026-03-02T09:30:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    category = EXCLUDED.category,
+    document_type = EXCLUDED.document_type,
+    document_number = EXCLUDED.document_number,
+    status = EXCLUDED.status,
+    file_name = EXCLUDED.file_name,
+    file_size = EXCLUDED.file_size,
+    upload_date = EXCLUDED.upload_date,
+    uploaded_by = EXCLUDED.uploaded_by,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.documents (id, program_id, program_ids, title, description, category, document_type, document_number, status, file_name, file_size, upload_date, uploaded_by, archived, data)
+VALUES ('doc_04', 'praps_cpu', '["praps_cpu"]'::jsonb, 'Protocolo Comunal de Prescripción y Titulación de Opioides Mayores en APS', 'Guía de práctica clínica comunal para titulación de morfina, fentanilo y rescate analgésico en pacientes con dolor oncológico y no oncológico.', 'convenio', 'Norma / Protocolo', NULL, 'vigente', 'Protocolo_Titulacion_Opioides_Quilicura_2026.pdf', '2.1 MB', '2026-03-22', NULL, false, '{"id":"doc_04","title":"Protocolo Comunal de Prescripción y Titulación de Opioides Mayores en APS","description":"Guía de práctica clínica comunal para titulación de morfina, fentanilo y rescate analgésico en pacientes con dolor oncológico y no oncológico.","fileName":"Protocolo_Titulacion_Opioides_Quilicura_2026.pdf","fileSize":"2.1 MB","documentType":"Norma / Protocolo","programIds":["praps_cpu"],"documentDate":"2026-03-20","uploadDate":"2026-03-22","institution":"DISAM Quilicura / Comisión Farmacia Comunal","status":"vigente","expirationDate":"2026-09-15","responsible":"Dra. Marcela Vidal R.","version":"v2.0","notes":"Válido para los 4 centros de salud de la comuna. Próxima revisión programada para septiembre 2026.","relatedKnowledgeIds":["know_01"],"createdAt":"2026-03-22T14:00:00Z","updatedAt":"2026-03-22T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    category = EXCLUDED.category,
+    document_type = EXCLUDED.document_type,
+    document_number = EXCLUDED.document_number,
+    status = EXCLUDED.status,
+    file_name = EXCLUDED.file_name,
+    file_size = EXCLUDED.file_size,
+    upload_date = EXCLUDED.upload_date,
+    uploaded_by = EXCLUDED.uploaded_by,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.documents (id, program_id, program_ids, title, description, category, document_type, document_number, status, file_name, file_size, upload_date, uploaded_by, archived, data)
+VALUES ('doc_05', 'praps_rehab', '["praps_rehab"]'::jsonb, 'Orientación Técnica Programa Rehabilitación Integral con Base Comunitaria 2026', 'Orientaciones técnicas de cobertura y cartera de prestaciones de salas RBC en APS Quilicura.', 'convenio', 'Orientación técnica', NULL, 'vigente', 'OT_Rehabilitacion_APS_2026.pdf', '4.1 MB', '2026-01-15', NULL, false, '{"id":"doc_05","title":"Orientación Técnica Programa Rehabilitación Integral con Base Comunitaria 2026","description":"Orientaciones técnicas de cobertura y cartera de prestaciones de salas RBC en APS Quilicura.","fileName":"OT_Rehabilitacion_APS_2026.pdf","fileSize":"4.1 MB","documentType":"Orientación técnica","programIds":["praps_rehab"],"documentDate":"2026-01-10","uploadDate":"2026-01-15","institution":"Ministerio de Salud / SSMN","status":"vigente","expirationDate":"2026-12-31","responsible":"Klgo. Sebastián Miranda P.","version":"2026","createdAt":"2026-01-15T12:00:00Z","updatedAt":"2026-01-15T12:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    category = EXCLUDED.category,
+    document_type = EXCLUDED.document_type,
+    document_number = EXCLUDED.document_number,
+    status = EXCLUDED.status,
+    file_name = EXCLUDED.file_name,
+    file_size = EXCLUDED.file_size,
+    upload_date = EXCLUDED.upload_date,
+    uploaded_by = EXCLUDED.uploaded_by,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.documents (id, program_id, program_ids, title, description, category, document_type, document_number, status, file_name, file_size, upload_date, uploaded_by, archived, data)
+VALUES ('doc_06', 'praps_cpu', '["praps_cpu","praps_rehab","praps_imagenes","praps_mas_ama","praps_respiratoria","prog_personas_mayores"]'::jsonb, 'Informe Financiero y Operativo Primer Trimestre PRAPS 2026', 'Consolidado comunal de gasto ejecutado y avance de metas REM del primer trimestre 2026.', 'convenio', 'Informe', NULL, 'historico', 'Informe_Rendicion_Q1_2026_Quilicura.pdf', '2.9 MB', '2026-04-18', NULL, false, '{"id":"doc_06","title":"Informe Financiero y Operativo Primer Trimestre PRAPS 2026","description":"Consolidado comunal de gasto ejecutado y avance de metas REM del primer trimestre 2026.","fileName":"Informe_Rendicion_Q1_2026_Quilicura.pdf","fileSize":"2.9 MB","documentType":"Informe","programIds":["praps_cpu","praps_rehab","praps_imagenes","praps_mas_ama","praps_respiratoria","prog_personas_mayores"],"documentDate":"2026-04-15","uploadDate":"2026-04-18","institution":"DISAM Quilicura","status":"historico","expirationDate":"2026-04-30","responsible":"Eduardo Henríquez P.","version":"v1.0","notes":"Rendición Q1 aprobada sin observaciones por SSMN.","createdAt":"2026-04-18T16:00:00Z","updatedAt":"2026-04-18T16:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    category = EXCLUDED.category,
+    document_type = EXCLUDED.document_type,
+    document_number = EXCLUDED.document_number,
+    status = EXCLUDED.status,
+    file_name = EXCLUDED.file_name,
+    file_size = EXCLUDED.file_size,
+    upload_date = EXCLUDED.upload_date,
+    uploaded_by = EXCLUDED.uploaded_by,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.documents (id, program_id, program_ids, title, description, category, document_type, document_number, status, file_name, file_size, upload_date, uploaded_by, archived, data)
+VALUES ('doc_07', 'prog_personas_mayores', '["prog_personas_mayores"]'::jsonb, 'Formulario Único de Postulación e Ingreso a ELEAM SENAMA', 'Pauta e informe social estandarizado para postulación a establecimientos de larga estadía.', 'convenio', 'Formulario', NULL, 'vigente', 'Formulario_Postulacion_ELEAM_2026.pdf', '1.2 MB', '2026-03-05', NULL, false, '{"id":"doc_07","title":"Formulario Único de Postulación e Ingreso a ELEAM SENAMA","description":"Pauta e informe social estandarizado para postulación a establecimientos de larga estadía.","fileName":"Formulario_Postulacion_ELEAM_2026.pdf","fileSize":"1.2 MB","documentType":"Formulario","programIds":["prog_personas_mayores"],"documentDate":"2026-03-01","uploadDate":"2026-03-05","institution":"SENAMA / MINSAL","status":"vigente","expirationDate":"2026-12-31","responsible":"Lorena Abarca M.","version":"2026","createdAt":"2026-03-05T10:00:00Z","updatedAt":"2026-03-05T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    category = EXCLUDED.category,
+    document_type = EXCLUDED.document_type,
+    document_number = EXCLUDED.document_number,
+    status = EXCLUDED.status,
+    file_name = EXCLUDED.file_name,
+    file_size = EXCLUDED.file_size,
+    upload_date = EXCLUDED.upload_date,
+    uploaded_by = EXCLUDED.uploaded_by,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.documents (id, program_id, program_ids, title, description, category, document_type, document_number, status, file_name, file_size, upload_date, uploaded_by, archived, data)
+VALUES ('doc_08', 'praps_imagenes', '["praps_imagenes"]'::jsonb, 'Oficio Ord. N° 452/2026 Criterios de Validación Exámenes Imágenes Diagnósticas', 'Instrucciones del SSMN respecto a la validación de vouchers de ecotomografías y radiografías en centros en convenio.', 'convenio', 'Oficio', NULL, 'por_revisar', 'Oficio_Ord_452_2026_SSMN_Imagenes.pdf', '1.5 MB', '2026-05-14', NULL, false, '{"id":"doc_08","title":"Oficio Ord. N° 452/2026 Criterios de Validación Exámenes Imágenes Diagnósticas","description":"Instrucciones del SSMN respecto a la validación de vouchers de ecotomografías y radiografías en centros en convenio.","fileName":"Oficio_Ord_452_2026_SSMN_Imagenes.pdf","fileSize":"1.5 MB","documentType":"Oficio","programIds":["praps_imagenes"],"documentDate":"2026-05-12","uploadDate":"2026-05-14","institution":"Servicio de Salud Metropolitano Norte","status":"por_revisar","expirationDate":"2026-09-01","responsible":"Klaus Bauer","version":"v1.0","notes":"Requiere revisión técnica con equipo de compras para ajustar los formatos de facturación de prestadores externos.","createdAt":"2026-05-14T11:00:00Z","updatedAt":"2026-05-14T11:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    category = EXCLUDED.category,
+    document_type = EXCLUDED.document_type,
+    document_number = EXCLUDED.document_number,
+    status = EXCLUDED.status,
+    file_name = EXCLUDED.file_name,
+    file_size = EXCLUDED.file_size,
+    upload_date = EXCLUDED.upload_date,
+    uploaded_by = EXCLUDED.uploaded_by,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+
+-- --- PREGUNTAS Y DUDAS TÉCNICAS ---
+
+INSERT INTO public.questions (id, program_id, asked_by, category, question, answer, status, priority, date, due_date, answered_by, answered_date, follow_ups, data)
+VALUES ('q_01', 'praps_imagenes', '', 'financiera', '¿Podemos reasignar fondos de mamografías no ejecutados a compra directa de horas ecográficas adicionales?', '', 'en_consulta', 'alta', '2026-09-24', NULL, NULL, NULL, '[{"id":"qfu_01_1","questionId":"q_01","type":"consulta_enviada","note":"Se envió minuta técnica y solicitud formal de redistribución de subtítulos presupuestarios a referente SSMN.","createdAt":"2026-08-08T11:30:00Z","createdBy":"Klaus Bauer"},{"id":"qfu_01_2","questionId":"q_01","type":"reiteracion","note":"Reiteración telefónica con Encargada de Convenios SSMN; indica que lo discutirán en la mesa del viernes 21/08.","createdAt":"2026-08-12T15:40:00Z","createdBy":"Klaus Bauer"}]'::jsonb, '{"id":"q_01","question":"¿Podemos reasignar fondos de mamografías no ejecutados a compra directa de horas ecográficas adicionales?","context":"Debido a la baja ejecución presupuestaria en mamografías por fallas técnicas reiteradas del proveedor externo móvil, se propone modificar el convenio con SSMN para transferir $14.500.000 a compra de ecotomografías mamarias.","programId":"praps_imagenes","category":"financiera","responsible":"Klaus Bauer","priority":"alta","isUrgent":true,"status":"en_consulta","followUpDate":"2026-08-14","nextInstance":"Mesa de Presupuestos con Referente Financiero SSMN (21/08/2026)","forNextMeeting":true,"meetingId":"meet_ssmn_01","followUps":[{"id":"qfu_01_1","questionId":"q_01","type":"consulta_enviada","note":"Se envió minuta técnica y solicitud formal de redistribución de subtítulos presupuestarios a referente SSMN.","createdAt":"2026-08-08T11:30:00Z","createdBy":"Klaus Bauer"},{"id":"qfu_01_2","questionId":"q_01","type":"reiteracion","note":"Reiteración telefónica con Encargada de Convenios SSMN; indica que lo discutirán en la mesa del viernes 21/08.","createdAt":"2026-08-12T15:40:00Z","createdBy":"Klaus Bauer"}],"attachments":[{"id":"qatt_01","questionId":"q_01","name":"Minuta_Tecnica_Redistribucion_Fondos_Imagenes.pdf","size":"1.2 MB","type":"application/pdf","uploadedAt":"2026-08-08T11:30:00Z","uploadedBy":"Klaus Bauer"}],"createdAt":"2026-08-08T11:00:00Z","updatedAt":"2026-08-12T15:40:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    asked_by = EXCLUDED.asked_by,
+    category = EXCLUDED.category,
+    question = EXCLUDED.question,
+    answer = EXCLUDED.answer,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    date = EXCLUDED.date,
+    due_date = EXCLUDED.due_date,
+    answered_by = EXCLUDED.answered_by,
+    answered_date = EXCLUDED.answered_date,
+    follow_ups = EXCLUDED.follow_ups,
+    data = EXCLUDED.data;
+
+INSERT INTO public.questions (id, program_id, asked_by, category, question, answer, status, priority, date, due_date, answered_by, answered_date, follow_ups, data)
+VALUES ('q_02', 'praps_cpu', '', 'tecnica', '¿Qué criterio técnico oficial rige para ingresar pacientes con demencia severa a CPU no oncológico si no tienen cuidador formal?', '', 'esperando_respuesta', 'critica', '2026-09-24', NULL, NULL, NULL, '[{"id":"qfu_02_1","questionId":"q_02","type":"consulta_enviada","note":"Se expuso el caso a la Dra. Francisca Ruiz (Referente CPU SSMN) solicitando orientación médica y de enlace con red hospitalaria.","createdAt":"2026-08-05T15:30:00Z","createdBy":"Dra. Marcela Vidal R."},{"id":"qfu_02_2","questionId":"q_02","type":"aclaracion_verbal","note":"Dra. Ruiz sugiere coordinar con Hospital San José para hospitalización diurna transitoria mientras se gestiona red de apoyo.","createdAt":"2026-08-10T14:15:00Z","createdBy":"Dra. Marcela Vidal R."}]'::jsonb, '{"id":"q_02","question":"¿Qué criterio técnico oficial rige para ingresar pacientes con demencia severa a CPU no oncológico si no tienen cuidador formal?","context":"Existen 2 casos en CESFAM Irene Frei donde el paciente vive solo con apoyo intermitente de vecinos. La guía MINSAL sugiere cuidador permanente para titulación de fármacos de alto riesgo.","programId":"praps_cpu","category":"tecnica","responsible":"Dra. Marcela Vidal R.","priority":"critica","isUrgent":true,"status":"esperando_respuesta","followUpDate":"2026-08-15","nextInstance":"Comité de Ética y Cuidados Paliativos SSMN (18/08/2026)","forNextMeeting":true,"meetingId":"meet_comite_cpu_01","followUps":[{"id":"qfu_02_1","questionId":"q_02","type":"consulta_enviada","note":"Se expuso el caso a la Dra. Francisca Ruiz (Referente CPU SSMN) solicitando orientación médica y de enlace con red hospitalaria.","createdAt":"2026-08-05T15:30:00Z","createdBy":"Dra. Marcela Vidal R."},{"id":"qfu_02_2","questionId":"q_02","type":"aclaracion_verbal","note":"Dra. Ruiz sugiere coordinar con Hospital San José para hospitalización diurna transitoria mientras se gestiona red de apoyo.","createdAt":"2026-08-10T14:15:00Z","createdBy":"Dra. Marcela Vidal R."}],"attachments":[{"id":"qatt_02","questionId":"q_02","name":"Informe_Clinico_Social_Casos_Sin_Cuidador.pdf","size":"840 KB","type":"application/pdf","uploadedAt":"2026-08-05T15:30:00Z","uploadedBy":"Dra. Marcela Vidal R."}],"createdAt":"2026-08-05T15:00:00Z","updatedAt":"2026-08-10T14:15:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    asked_by = EXCLUDED.asked_by,
+    category = EXCLUDED.category,
+    question = EXCLUDED.question,
+    answer = EXCLUDED.answer,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    date = EXCLUDED.date,
+    due_date = EXCLUDED.due_date,
+    answered_by = EXCLUDED.answered_by,
+    answered_date = EXCLUDED.answered_date,
+    follow_ups = EXCLUDED.follow_ups,
+    data = EXCLUDED.data;
+
+INSERT INTO public.questions (id, program_id, asked_by, category, question, answer, status, priority, date, due_date, answered_by, answered_date, follow_ups, data)
+VALUES ('q_03', 'praps_respiratoria', '', 'servicio_salud', '¿Se autorizará prórroga de contratos de refuerzo kinésico de Campaña de Invierno hasta el 31 de octubre?', '', 'en_consulta', 'alta', '2026-09-24', NULL, NULL, NULL, '[{"id":"qfu_03_1","questionId":"q_03","type":"consulta_enviada","note":"Se remitió informe epidemiológico comunal con proyecciones de consultas IRA/ERA de septiembre a SSMN.","createdAt":"2026-08-12T10:30:00Z","createdBy":"Klgo. Gonzalo Tapia G."}]'::jsonb, '{"id":"q_03","question":"¿Se autorizará prórroga de contratos de refuerzo kinésico de Campaña de Invierno hasta el 31 de octubre?","context":"Históricamente la curva de circulación viral respiratoria en Quilicura se extiende hasta fines de octubre, pero el decreto de fondos del convenio actual tiene vigencia hasta el 30/09.","programId":"praps_respiratoria","subprogramId":"Campaña de Invierno","category":"servicio_salud","responsible":"Klgo. Gonzalo Tapia G.","priority":"alta","isUrgent":false,"status":"en_consulta","followUpDate":"2026-08-20","nextInstance":"Reunión de Coordinación de Red de Urgencia SSMN","forNextMeeting":false,"followUps":[{"id":"qfu_03_1","questionId":"q_03","type":"consulta_enviada","note":"Se remitió informe epidemiológico comunal con proyecciones de consultas IRA/ERA de septiembre a SSMN.","createdAt":"2026-08-12T10:30:00Z","createdBy":"Klgo. Gonzalo Tapia G."}],"createdAt":"2026-08-12T10:00:00Z","updatedAt":"2026-08-12T10:30:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    asked_by = EXCLUDED.asked_by,
+    category = EXCLUDED.category,
+    question = EXCLUDED.question,
+    answer = EXCLUDED.answer,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    date = EXCLUDED.date,
+    due_date = EXCLUDED.due_date,
+    answered_by = EXCLUDED.answered_by,
+    answered_date = EXCLUDED.answered_date,
+    follow_ups = EXCLUDED.follow_ups,
+    data = EXCLUDED.data;
+
+INSERT INTO public.questions (id, program_id, asked_by, category, question, answer, status, priority, date, due_date, answered_by, answered_date, follow_ups, data)
+VALUES ('q_04', 'prog_personas_mayores', '', 'normativa', '¿Es obligatorio adjuntar certificado de antecedentes de familiares directos en postulaciones ELEAM en casos de judicialización por abandono?', '', 'resuelta', 'alta', '2026-09-24', NULL, NULL, NULL, '[{"id":"qfu_04_1","questionId":"q_04","type":"respuesta_parcial","note":"Respuesta formal ingresada por plataforma SENAMA aclarando que la resolución judicial es título suficiente.","createdAt":"2026-08-02T16:00:00Z","createdBy":"T.S. Lorena Abarca M."}]'::jsonb, '{"id":"q_04","question":"¿Es obligatorio adjuntar certificado de antecedentes de familiares directos en postulaciones ELEAM en casos de judicialización por abandono?","context":"SENAMA observó expediente de postulante judicializado por no incluir cédula de identidad de hijo inubicable.","programId":"prog_personas_mayores","category":"normativa","responsible":"T.S. Lorena Abarca M.","priority":"alta","isUrgent":false,"status":"resuelta","followUpDate":"2026-08-01","resolvedDate":"2026-08-02","sourceOfResponse":"Asesoría Jurídica y Unidad ELEAM SENAMA Central","finalAnswer":"Se coordinó con asesoría jurídica SENAMA: basta con adjuntar la resolución del Tribunal de Familia que certifica la orden de medida de protección y el estado de abandono legalmente acreditado, sin exigir antecedentes de parientes inubicables.","followUps":[{"id":"qfu_04_1","questionId":"q_04","type":"respuesta_parcial","note":"Respuesta formal ingresada por plataforma SENAMA aclarando que la resolución judicial es título suficiente.","createdAt":"2026-08-02T16:00:00Z","createdBy":"T.S. Lorena Abarca M."}],"createdAt":"2026-07-20T11:00:00Z","updatedAt":"2026-08-02T16:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    asked_by = EXCLUDED.asked_by,
+    category = EXCLUDED.category,
+    question = EXCLUDED.question,
+    answer = EXCLUDED.answer,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    date = EXCLUDED.date,
+    due_date = EXCLUDED.due_date,
+    answered_by = EXCLUDED.answered_by,
+    answered_date = EXCLUDED.answered_date,
+    follow_ups = EXCLUDED.follow_ups,
+    data = EXCLUDED.data;
+
+INSERT INTO public.questions (id, program_id, asked_by, category, question, answer, status, priority, date, due_date, answered_by, answered_date, follow_ups, data)
+VALUES ('q_05', 'praps_mas_ama', '', 'administrativa', '¿Cuál es el procedimiento para rendir boletas de honorarios de talleristas comunitarios de MAS AMA contratados bajo modalidad comunal directa?', '', 'pendiente', 'media', '2026-09-24', NULL, NULL, NULL, '[]'::jsonb, '{"id":"q_05","question":"¿Cuál es el procedimiento para rendir boletas de honorarios de talleristas comunitarios de MAS AMA contratados bajo modalidad comunal directa?","context":"Dudas en el equipo sobre si se rinde vía planilla Excel con firmas físicas o validación electrónica en CeroPapel.","programId":"praps_mas_ama","category":"administrativa","responsible":"Klga. Valentina Jerez F.","priority":"media","isUrgent":false,"status":"pendiente","followUpDate":"2026-08-18","nextInstance":"Mesa de Trabajo Administrativa DISAM","forNextMeeting":true,"createdAt":"2026-08-13T09:00:00Z","updatedAt":"2026-08-13T09:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    asked_by = EXCLUDED.asked_by,
+    category = EXCLUDED.category,
+    question = EXCLUDED.question,
+    answer = EXCLUDED.answer,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    date = EXCLUDED.date,
+    due_date = EXCLUDED.due_date,
+    answered_by = EXCLUDED.answered_by,
+    answered_date = EXCLUDED.answered_date,
+    follow_ups = EXCLUDED.follow_ups,
+    data = EXCLUDED.data;
+
+INSERT INTO public.questions (id, program_id, asked_by, category, question, answer, status, priority, date, due_date, answered_by, answered_date, follow_ups, data)
+VALUES ('q_06', 'praps_rehab', '', 'financiera', '¿Se puede utilizar el remanente de fondos de insumos de rehabilitación para calibración y mantención preventiva de electroestimuladores?', '', 'resuelta', 'media', '2026-09-24', NULL, NULL, NULL, '[]'::jsonb, '{"id":"q_06","question":"¿Se puede utilizar el remanente de fondos de insumos de rehabilitación para calibración y mantención preventiva de electroestimuladores?","context":"Se cotizó servicio técnico autorizado para 4 equipos de Salas RBC; se requiere autorización de cambio de ítem presupuestario.","programId":"praps_rehab","category":"financiera","responsible":"Klgo. Felipe Santander V.","priority":"media","isUrgent":false,"status":"resuelta","followUpDate":"2026-07-30","resolvedDate":"2026-08-01","closedReason":"Se desestimó la solicitud porque la mantención fue cubierta por el contrato comunal marco de equipamiento médico municipal.","createdAt":"2026-07-15T14:00:00Z","updatedAt":"2026-08-01T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    asked_by = EXCLUDED.asked_by,
+    category = EXCLUDED.category,
+    question = EXCLUDED.question,
+    answer = EXCLUDED.answer,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    date = EXCLUDED.date,
+    due_date = EXCLUDED.due_date,
+    answered_by = EXCLUDED.answered_by,
+    answered_date = EXCLUDED.answered_date,
+    follow_ups = EXCLUDED.follow_ups,
+    data = EXCLUDED.data;
+
+
+-- --- RECURSOS HUMANOS / EQUIPOS ---
+
+INSERT INTO public.hr_records (id, program_id, establishment_id, name, rut, role, hours, contract_type, monthly_cost, start_date, end_date, status, archived, data)
+VALUES ('hr_cpu_01', 'praps_cpu', 'cesfam_mbh', 'Dra. Marcela Vidal R.', '', 'Médico Referente Clínico CPU', 44, 'Contrata', 0, '2025-01-01', NULL, 'activo', false, '{"id":"hr_cpu_01","programId":"praps_cpu","name":"Dra. Marcela Vidal R.","profession":"Médico Cirujano (Espec. Cuidados Paliativos)","role":"Médico Referente Clínico CPU","establishmentId":"cesfam_mbh","workdayHours":44,"programHours":22,"contractType":"Contrata","startDate":"2025-01-01","functions":"Visitas domiciliarias integrales a pacientes CPU no oncológicos y oncológicos, prescripción de analgesia mayor y titulación opioide.","status":"activo","createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-08-01T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    establishment_id = EXCLUDED.establishment_id,
+    name = EXCLUDED.name,
+    rut = EXCLUDED.rut,
+    role = EXCLUDED.role,
+    hours = EXCLUDED.hours,
+    contract_type = EXCLUDED.contract_type,
+    monthly_cost = EXCLUDED.monthly_cost,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.hr_records (id, program_id, establishment_id, name, rut, role, hours, contract_type, monthly_cost, start_date, end_date, status, archived, data)
+VALUES ('hr_cpu_02', 'praps_cpu', 'cesfam_ifc', 'E.U. Rodrigo Morales T.', '', 'Enfermero de Enlace y Visitas Domiciliarias', 44, 'Contrata', 0, '2025-03-01', NULL, 'activo', false, '{"id":"hr_cpu_02","programId":"praps_cpu","name":"E.U. Rodrigo Morales T.","profession":"Enfermero Universitario","role":"Enfermero de Enlace y Visitas Domiciliarias","establishmentId":"cesfam_ifc","workdayHours":44,"programHours":44,"contractType":"Contrata","startDate":"2025-03-01","functions":"Curaciones avanzadas, administración de infusores elastoméricos, apoyo a cuidador principal.","status":"activo","createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-08-01T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    establishment_id = EXCLUDED.establishment_id,
+    name = EXCLUDED.name,
+    rut = EXCLUDED.rut,
+    role = EXCLUDED.role,
+    hours = EXCLUDED.hours,
+    contract_type = EXCLUDED.contract_type,
+    monthly_cost = EXCLUDED.monthly_cost,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.hr_records (id, program_id, establishment_id, name, rut, role, hours, contract_type, monthly_cost, start_date, end_date, status, archived, data)
+VALUES ('hr_cpu_03', 'praps_cpu', 'cesfam_psag', 'Ps. Daniela Campos P.', '', 'Psicóloga de Apoyo al Duelo y Cuidador', 44, 'Honorarios', 0, '2026-04-01', '2026-12-31', 'activo', false, '{"id":"hr_cpu_03","programId":"praps_cpu","name":"Ps. Daniela Campos P.","profession":"Psicóloga Clínica","role":"Psicóloga de Apoyo al Duelo y Cuidador","establishmentId":"cesfam_psag","workdayHours":22,"programHours":22,"contractType":"Honorarios","startDate":"2026-04-01","endDate":"2026-12-31","functions":"Intervención en crisis, acompañamiento en fin de vida y duelo anticipatorio a familias cuidadoras.","status":"activo","notes":"Cobertura de casos urgentes y derivaciones psicosociales.","createdAt":"2026-04-01T09:00:00Z","updatedAt":"2026-08-06T14:30:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    establishment_id = EXCLUDED.establishment_id,
+    name = EXCLUDED.name,
+    rut = EXCLUDED.rut,
+    role = EXCLUDED.role,
+    hours = EXCLUDED.hours,
+    contract_type = EXCLUDED.contract_type,
+    monthly_cost = EXCLUDED.monthly_cost,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.hr_records (id, program_id, establishment_id, name, rut, role, hours, contract_type, monthly_cost, start_date, end_date, status, archived, data)
+VALUES ('hr_rehab_01', 'praps_rehab', 'cesfam_mbh', 'Klgo. Felipe Santander V.', '', 'Kinesiólogo Sala RBC Manuel Bustos', 44, 'Contrata', 0, '2024-06-01', NULL, 'activo', false, '{"id":"hr_rehab_01","programId":"praps_rehab","name":"Klgo. Felipe Santander V.","profession":"Kinesiólogo","role":"Kinesiólogo Sala RBC Manuel Bustos","establishmentId":"cesfam_mbh","workdayHours":44,"programHours":44,"contractType":"Contrata","startDate":"2024-06-01","functions":"Atención de pacientes osteomusculares crónicos, ACV secuelados, prescripción de ejercicio terapéutico.","status":"activo","createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-07-20T11:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    establishment_id = EXCLUDED.establishment_id,
+    name = EXCLUDED.name,
+    rut = EXCLUDED.rut,
+    role = EXCLUDED.role,
+    hours = EXCLUDED.hours,
+    contract_type = EXCLUDED.contract_type,
+    monthly_cost = EXCLUDED.monthly_cost,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.hr_records (id, program_id, establishment_id, name, rut, role, hours, contract_type, monthly_cost, start_date, end_date, status, archived, data)
+VALUES ('hr_rehab_02', 'praps_rehab', 'cesfam_psag', 'T.O. Camila Soto B.', '', 'Terapeuta Ocupacional Red RBC', 44, 'Contrata', 0, '2025-02-01', NULL, 'activo', false, '{"id":"hr_rehab_02","programId":"praps_rehab","name":"T.O. Camila Soto B.","profession":"Terapeuta Ocupacional","role":"Terapeuta Ocupacional Red RBC","establishmentId":"cesfam_psag","workdayHours":44,"programHours":44,"contractType":"Contrata","startDate":"2025-02-01","functions":"Adaptaciones en el hogar, entrenamiento en AVD básicas e instrumentales, confección de órtesis blandas.","status":"activo","createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-07-20T11:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    establishment_id = EXCLUDED.establishment_id,
+    name = EXCLUDED.name,
+    rut = EXCLUDED.rut,
+    role = EXCLUDED.role,
+    hours = EXCLUDED.hours,
+    contract_type = EXCLUDED.contract_type,
+    monthly_cost = EXCLUDED.monthly_cost,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.hr_records (id, program_id, establishment_id, name, rut, role, hours, contract_type, monthly_cost, start_date, end_date, status, archived, data)
+VALUES ('hr_rehab_03', 'praps_rehab', 'cesfam_ifc', 'Cupo Fonoaudiología', '', 'Fonoaudiólogo/a Sala RBC Irene Frei', 44, 'Honorarios', 0, '2026-09-01', NULL, 'en_proceso_seleccion', false, '{"id":"hr_rehab_03","programId":"praps_rehab","name":"Cupo Fonoaudiología","profession":"Fonoaudiólogo/a","role":"Fonoaudiólogo/a Sala RBC Irene Frei","establishmentId":"cesfam_ifc","workdayHours":22,"programHours":22,"contractType":"Honorarios","startDate":"2026-09-01","functions":"Evaluación y tratamiento de disfagia y trastornos de la comunicación en personas mayores.","status":"en_proceso_seleccion","notes":"Proceso de selección en curso en Recursos Humanos DISAM. Se espera ingreso en septiembre.","createdAt":"2026-07-10T12:00:00Z","updatedAt":"2026-08-10T16:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    establishment_id = EXCLUDED.establishment_id,
+    name = EXCLUDED.name,
+    rut = EXCLUDED.rut,
+    role = EXCLUDED.role,
+    hours = EXCLUDED.hours,
+    contract_type = EXCLUDED.contract_type,
+    monthly_cost = EXCLUDED.monthly_cost,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.hr_records (id, program_id, establishment_id, name, rut, role, hours, contract_type, monthly_cost, start_date, end_date, status, archived, data)
+VALUES ('hr_imag_01', 'praps_imagenes', 'cesfam_mbh', 'Dr. Patricio Alarcón M.', '', 'Ecografista Red APS Quilicura', 44, 'Honorarios', 0, '2026-01-01', NULL, 'activo', false, '{"id":"hr_imag_01","programId":"praps_imagenes","name":"Dr. Patricio Alarcón M.","profession":"Médico Radiólogo / Ecografista","role":"Ecografista Red APS Quilicura","establishmentId":"cesfam_mbh","workdayHours":22,"programHours":22,"contractType":"Honorarios","startDate":"2026-01-01","functions":"Realización e informe de ecografías abdominales y partes blandas.","status":"activo","createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-08-01T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    establishment_id = EXCLUDED.establishment_id,
+    name = EXCLUDED.name,
+    rut = EXCLUDED.rut,
+    role = EXCLUDED.role,
+    hours = EXCLUDED.hours,
+    contract_type = EXCLUDED.contract_type,
+    monthly_cost = EXCLUDED.monthly_cost,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.hr_records (id, program_id, establishment_id, name, rut, role, hours, contract_type, monthly_cost, start_date, end_date, status, archived, data)
+VALUES ('hr_mas_ama_01', 'praps_mas_ama', 'cesfam_mbh', 'Klga. Valentina Jerez F.', '', 'Dupla MAS AMA - Eje Motor', 44, 'Contrata', 0, '2025-01-01', NULL, 'activo', false, '{"id":"hr_mas_ama_01","programId":"praps_mas_ama","name":"Klga. Valentina Jerez F.","profession":"Kinesióloga","role":"Dupla MAS AMA - Eje Motor","establishmentId":"cesfam_mbh","workdayHours":44,"programHours":44,"contractType":"Contrata","startDate":"2025-01-01","functions":"Ejecución de talleres de prevención de caídas y actividad física comunitaria.","status":"activo","createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-08-01T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    establishment_id = EXCLUDED.establishment_id,
+    name = EXCLUDED.name,
+    rut = EXCLUDED.rut,
+    role = EXCLUDED.role,
+    hours = EXCLUDED.hours,
+    contract_type = EXCLUDED.contract_type,
+    monthly_cost = EXCLUDED.monthly_cost,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.hr_records (id, program_id, establishment_id, name, rut, role, hours, contract_type, monthly_cost, start_date, end_date, status, archived, data)
+VALUES ('hr_mas_ama_02', 'praps_mas_ama', 'cesfam_mbh', 'T.O. Ignacio Valenzuela D.', '', 'Dupla MAS AMA - Eje Cognitivo y Redes', 44, 'Contrata', 0, '2025-01-01', NULL, 'activo', false, '{"id":"hr_mas_ama_02","programId":"praps_mas_ama","name":"T.O. Ignacio Valenzuela D.","profession":"Terapeuta Ocupacional","role":"Dupla MAS AMA - Eje Cognitivo y Redes","establishmentId":"cesfam_mbh","workdayHours":44,"programHours":44,"contractType":"Contrata","startDate":"2025-01-01","functions":"Talleres de memoria y liderazgo comunitario con clubes de adulto mayor.","status":"activo","createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-08-01T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    establishment_id = EXCLUDED.establishment_id,
+    name = EXCLUDED.name,
+    rut = EXCLUDED.rut,
+    role = EXCLUDED.role,
+    hours = EXCLUDED.hours,
+    contract_type = EXCLUDED.contract_type,
+    monthly_cost = EXCLUDED.monthly_cost,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.hr_records (id, program_id, establishment_id, name, rut, role, hours, contract_type, monthly_cost, start_date, end_date, status, archived, data)
+VALUES ('hr_resp_01', 'praps_respiratoria', 'cesfam_psag', 'Klgo. Gonzalo Tapia G.', '', 'Encargado Sala ERA Salvador Allende', 44, 'Planta', 0, '2023-03-01', NULL, 'activo', false, '{"id":"hr_resp_01","programId":"praps_respiratoria","name":"Klgo. Gonzalo Tapia G.","profession":"Kinesiólogo ERA/IRA","role":"Encargado Sala ERA Salvador Allende","establishmentId":"cesfam_psag","workdayHours":44,"programHours":44,"contractType":"Planta","startDate":"2023-03-01","functions":"Atención kinesiológica respiratoria, espirometrías, educación en técnica inhalatoria.","status":"activo","createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-08-01T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    establishment_id = EXCLUDED.establishment_id,
+    name = EXCLUDED.name,
+    rut = EXCLUDED.rut,
+    role = EXCLUDED.role,
+    hours = EXCLUDED.hours,
+    contract_type = EXCLUDED.contract_type,
+    monthly_cost = EXCLUDED.monthly_cost,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.hr_records (id, program_id, establishment_id, name, rut, role, hours, contract_type, monthly_cost, start_date, end_date, status, archived, data)
+VALUES ('hr_resp_02', 'praps_respiratoria', 'cesfam_ifc', 'Klga. Constanza Pino H.', '', 'Refuerzo Kinesiológico Campaña de Invierno', 44, 'Honorarios', 0, '2026-05-15', '2026-09-30', 'activo', false, '{"id":"hr_resp_02","programId":"praps_respiratoria","subprogramId":"Campaña de Invierno","name":"Klga. Constanza Pino H.","profession":"Kinesióloga","role":"Refuerzo Kinesiológico Campaña de Invierno","establishmentId":"cesfam_ifc","workdayHours":44,"programHours":44,"contractType":"Honorarios","startDate":"2026-05-15","endDate":"2026-09-30","functions":"Extensión horaria kinésica para atención de urgencias respiratorias en SAPU/CESFAM.","status":"activo","createdAt":"2026-05-15T09:00:00Z","updatedAt":"2026-08-01T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    establishment_id = EXCLUDED.establishment_id,
+    name = EXCLUDED.name,
+    rut = EXCLUDED.rut,
+    role = EXCLUDED.role,
+    hours = EXCLUDED.hours,
+    contract_type = EXCLUDED.contract_type,
+    monthly_cost = EXCLUDED.monthly_cost,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.hr_records (id, program_id, establishment_id, name, rut, role, hours, contract_type, monthly_cost, start_date, end_date, status, archived, data)
+VALUES ('hr_mayores_01', 'prog_personas_mayores', 'direccion_salud', 'T.S. Lorena Abarca M.', '', 'Coordinadora de Red y Postulaciones ELEAM', 44, 'Contrata', 0, '2024-01-01', NULL, 'activo', false, '{"id":"hr_mayores_01","programId":"prog_personas_mayores","name":"T.S. Lorena Abarca M.","profession":"Trabajadora Social","role":"Coordinadora de Red y Postulaciones ELEAM","establishmentId":"direccion_salud","workdayHours":44,"programHours":44,"contractType":"Contrata","startDate":"2024-01-01","functions":"Revisión técnica de antecedentes sociales, gestión de cupos SENAMA/ELEAM y coordinación intersectorial.","status":"activo","createdAt":"2026-01-15T09:00:00Z","updatedAt":"2026-08-01T10:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    establishment_id = EXCLUDED.establishment_id,
+    name = EXCLUDED.name,
+    rut = EXCLUDED.rut,
+    role = EXCLUDED.role,
+    hours = EXCLUDED.hours,
+    contract_type = EXCLUDED.contract_type,
+    monthly_cost = EXCLUDED.monthly_cost,
+    start_date = EXCLUDED.start_date,
+    end_date = EXCLUDED.end_date,
+    status = EXCLUDED.status,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+
+-- --- BASE DE CONOCIMIENTO ---
+
+INSERT INTO public.knowledge (id, program_id, program_ids, title, category, content, tags, author, date, archived, data)
+VALUES ('kn_01', 'praps_cpu', '["praps_cpu"]'::jsonb, 'Flujograma para Notificación y Titulación de Opioides Mayores en CPU', 'Criterio técnico', '1. Receta cheque emitida exclusivamente por médico acreditado en talonario DISAM foliado.
+2. Visita domiciliaria de enfermería en ≤24h para educación formal del cuidador principal sobre administración, dosificación de rescate y almacenamiento seguro.
+3. Registro simultáneo en plataforma Rayen y en la planilla interna comunal de fármacos controlados.
+4. Entrega de número de contacto telefónico de emergencia 24/7 disponible para la familia.', '["Opioides","RecetaCheque","Protocolo","Dolor","CuidadosPaliativos"]'::jsonb, 'Dra. Marcela Vidal R.', '2026-09-24T11:31:31.701Z', false, '{"id":"kn_01","title":"Flujograma para Notificación y Titulación de Opioides Mayores en CPU","summary":"Pasos obligatorios para la prescripción, entrega y seguimiento domiciliario de opioides mayores en pacientes con cuidados paliativos.","content":"1. Receta cheque emitida exclusivamente por médico acreditado en talonario DISAM foliado.\n2. Visita domiciliaria de enfermería en ≤24h para educación formal del cuidador principal sobre administración, dosificación de rescate y almacenamiento seguro.\n3. Registro simultáneo en plataforma Rayen y en la planilla interna comunal de fármacos controlados.\n4. Entrega de número de contacto telefónico de emergencia 24/7 disponible para la familia.","category":"Criterio técnico","tags":["Opioides","RecetaCheque","Protocolo","Dolor","CuidadosPaliativos"],"status":"vigente","source":"Norma / Orientación técnica","sourceReference":"Orientación Técnica Ministerial Programa Cuidados Paliativos Universales 2026","programId":"praps_cpu","programIds":["praps_cpu"],"isPinned":true,"isFeatured":true,"author":"Dra. Marcela Vidal R.","reviewBeforeDate":"2026-11-30","createdAt":"2026-02-10T10:00:00Z","updatedAt":"2026-07-01T12:00:00Z","attachments":[{"id":"katt_01","name":"Flujograma_Prescripcion_Opioides_CPU_2026.pdf","size":"1.8 MB","type":"application/pdf","uploadedAt":"2026-02-10T10:30:00Z","uploadedBy":"Dra. Marcela Vidal R."}],"history":[{"id":"kh_01","date":"2026-02-10T10:00:00Z","user":"Dra. Marcela Vidal R.","action":"Creación","details":"Registro inicial del protocolo comunal de prescripción."},{"id":"kh_02","date":"2026-07-01T12:00:00Z","user":"Klaus Bauer","action":"Actualización","details":"Se actualizó teléfono de turno de enfermería 24/7."}]}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    category = EXCLUDED.category,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    author = EXCLUDED.author,
+    date = EXCLUDED.date,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.knowledge (id, program_id, program_ids, title, category, content, tags, author, date, archived, data)
+VALUES ('kn_02', 'praps_rehab', '["praps_cpu","praps_rehab","praps_imagenes","praps_mas_ama","praps_respiratoria"]'::jsonb, 'Fecha Límite Improrrogable: Rendición de Cuentas Financiera PRAPS', 'Fecha / Hito importante', 'Las rendiciones de gastos y solicitudes de modificación presupuestaria del segundo semestre deben remitirse al SSMN a más tardar el quinto día hábil de cada mes. Para traspasos entre subtítulos, se requiere decreto alcaldicio con al menos 15 días corridos de anticipación a la fecha de corte.', '["Presupuesto","Rendición","SSMN","Plazos","Finanzas"]'::jsonb, 'Klaus Bauer', '2026-09-24T11:31:31.701Z', false, '{"id":"kn_02","title":"Fecha Límite Improrrogable: Rendición de Cuentas Financiera PRAPS","summary":"Calendario mensual y requisitos normativos para la remisión de estados de pago y reasignaciones al SSMN.","content":"Las rendiciones de gastos y solicitudes de modificación presupuestaria del segundo semestre deben remitirse al SSMN a más tardar el quinto día hábil de cada mes. Para traspasos entre subtítulos, se requiere decreto alcaldicio con al menos 15 días corridos de anticipación a la fecha de corte.","category":"Fecha / Hito importante","tags":["Presupuesto","Rendición","SSMN","Plazos","Finanzas"],"status":"vigente","source":"Servicio de Salud","sourceReference":"Oficio Circular Ordinario SSMN N° 142/2026 sobre rendición de fondos","programId":"praps_rehab","programIds":["praps_cpu","praps_rehab","praps_imagenes","praps_mas_ama","praps_respiratoria"],"isPinned":true,"isFeatured":true,"author":"Klaus Bauer","reviewBeforeDate":"2026-08-10","createdAt":"2026-01-20T09:00:00Z","updatedAt":"2026-06-15T10:00:00Z","history":[{"id":"kh_03","date":"2026-01-20T09:00:00Z","user":"Klaus Bauer","action":"Creación","details":"Instrucción emanada de reunión de coordinación financiera SSMN."}]}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    category = EXCLUDED.category,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    author = EXCLUDED.author,
+    date = EXCLUDED.date,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.knowledge (id, program_id, program_ids, title, category, content, tags, author, date, archived, data)
+VALUES ('kn_03', 'prog_personas_mayores', '["prog_personas_mayores"]'::jsonb, 'Error a Evitar en Postulaciones ELEAM SENAMA', 'Error a evitar', 'Nunca enviar el expediente sin el informe social firmado por Trabajadora Social colegiada con timbre institucional visible. El examen médico integral con índices de Barthel y Minimental debe tener antigüedad menor a 60 días corridos para no ser rechazado automáticamente por la comisión médica regional.', '["ELEAM","SENAMA","InformeSocial","Rechazo","AdultoMayor"]'::jsonb, 'T.S. Lorena Abarca M.', '2026-09-24T11:31:31.701Z', false, '{"id":"kn_03","title":"Error a Evitar en Postulaciones ELEAM SENAMA","summary":"Causales críticas de rechazo automático en la comisión médica y social regional de SENAMA.","content":"Nunca enviar el expediente sin el informe social firmado por Trabajadora Social colegiada con timbre institucional visible. El examen médico integral con índices de Barthel y Minimental debe tener antigüedad menor a 60 días corridos para no ser rechazado automáticamente por la comisión médica regional.","category":"Error a evitar","tags":["ELEAM","SENAMA","InformeSocial","Rechazo","AdultoMayor"],"status":"vigente","source":"Experiencia operativa","sourceReference":"Aprendizaje tras 3 casos observados en comité regional 2025-2026","programId":"prog_personas_mayores","programIds":["prog_personas_mayores"],"isPinned":true,"isFeatured":true,"author":"T.S. Lorena Abarca M.","reviewBeforeDate":"2026-12-15","createdAt":"2026-03-05T14:00:00Z","updatedAt":"2026-08-01T10:00:00Z","history":[{"id":"kh_04","date":"2026-03-05T14:00:00Z","user":"T.S. Lorena Abarca M.","action":"Creación","details":"Sistematización de causa de rechazo de expediente de postulación."}]}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    category = EXCLUDED.category,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    author = EXCLUDED.author,
+    date = EXCLUDED.date,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.knowledge (id, program_id, program_ids, title, category, content, tags, author, date, archived, data)
+VALUES ('kn_04', 'praps_respiratoria', '["praps_respiratoria"]'::jsonb, 'Protocolo de Mantenimiento y Calibración de Espirómetros en Salas ERA', 'Procedimiento / Flujo', 'Cada lunes antes del inicio de la jornada de atención de pacientes, el kinesiólogo a cargo de la sala ERA debe realizar la calibración con jeringa patrón de 3 litros y registrar la curva de verificación en la bitácora física de la sala y en la planilla compartida de calidad.', '["ERA","Espirometría","Calibración","Calidad","SaludRespiratoria"]'::jsonb, 'Klgo. Gonzalo Tapia G.', '2026-09-24T11:31:31.701Z', false, '{"id":"kn_04","title":"Protocolo de Mantenimiento y Calibración de Espirómetros en Salas ERA","summary":"Procedimiento de verificación técnica semanal con jeringa de calibración de 3 litros.","content":"Cada lunes antes del inicio de la jornada de atención de pacientes, el kinesiólogo a cargo de la sala ERA debe realizar la calibración con jeringa patrón de 3 litros y registrar la curva de verificación en la bitácora física de la sala y en la planilla compartida de calidad.","category":"Procedimiento / Flujo","tags":["ERA","Espirometría","Calibración","Calidad","SaludRespiratoria"],"status":"vigente","source":"Norma / Orientación técnica","sourceReference":"Guía Clínica GES Asma Bronquial y Manual de Salas ERA Minsal","programId":"praps_respiratoria","programIds":["praps_respiratoria"],"isPinned":false,"author":"Klgo. Gonzalo Tapia G.","reviewBeforeDate":"2026-10-30","createdAt":"2026-04-12T11:00:00Z","updatedAt":"2026-04-12T11:00:00Z","history":[{"id":"kh_05","date":"2026-04-12T11:00:00Z","user":"Klgo. Gonzalo Tapia G.","action":"Creación","details":"Definición de criterio para asegurar trazabilidad en auditorías MINSAL."}]}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    category = EXCLUDED.category,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    author = EXCLUDED.author,
+    date = EXCLUDED.date,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.knowledge (id, program_id, program_ids, title, category, content, tags, author, date, archived, data)
+VALUES ('kn_05', 'praps_imagenes', '["praps_imagenes"]'::jsonb, 'Criterio de Validación de Exámenes de Mamografía con Proveedor Externo', 'Criterio técnico', '1. Cotejar lista de imágenes contra el libro de derivaciones comunal.
+2. Exigir informe firmado digitalmente con clasificación BI-RADS explícita.
+3. En caso de BI-RADS 4 o 5, activar derivación prioritaria GES en <24 horas y contactar telefónicamente a la usuaria.', '["Mamografía","BIRADS","Imágenes","Calidad","GES"]'::jsonb, 'Klaus Bauer', '2026-09-24T11:31:31.701Z', false, '{"id":"kn_05","title":"Criterio de Validación de Exámenes de Mamografía con Proveedor Externo","summary":"Pautas de control de calidad para recepcionar remesas de informes de mamografías.","content":"1. Cotejar lista de imágenes contra el libro de derivaciones comunal.\n2. Exigir informe firmado digitalmente con clasificación BI-RADS explícita.\n3. En caso de BI-RADS 4 o 5, activar derivación prioritaria GES en <24 horas y contactar telefónicamente a la usuaria.","category":"Criterio técnico","tags":["Mamografía","BIRADS","Imágenes","Calidad","GES"],"status":"vigente","source":"Acuerdo interno","sourceReference":"Protocolo de alerta temprana para sospecha de cáncer de mama DISAM","programId":"praps_imagenes","programIds":["praps_imagenes"],"isPinned":true,"isFeatured":true,"author":"Klaus Bauer","reviewBeforeDate":"2026-09-30","createdAt":"2026-05-18T09:00:00Z","updatedAt":"2026-07-15T14:00:00Z","history":[{"id":"kh_06","date":"2026-05-18T09:00:00Z","user":"Klaus Bauer","action":"Creación","details":"Acuerdo tras mesa técnica con referente de imágenes SSMN."}]}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    category = EXCLUDED.category,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    author = EXCLUDED.author,
+    date = EXCLUDED.date,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+INSERT INTO public.knowledge (id, program_id, program_ids, title, category, content, tags, author, date, archived, data)
+VALUES ('kn_06', 'praps_rehab', '["praps_rehab","praps_cpu"]'::jsonb, 'Flujo Anterior de Rendición en Papel Físico (Descontinuado)', 'Requisito administrativo', 'Procedimiento archivado: Antes de junio 2026 se requería triplicado físico de facturas y timbres manuales de contabilidad. Este flujo quedó sin vigencia tras la implementación del portal digital de rendición electrónica SSMN.', '["Histórico","CeroPapel","Rendición","SSMN"]'::jsonb, 'Klaus Bauer', '2026-09-24T11:31:31.701Z', false, '{"id":"kn_06","title":"Flujo Anterior de Rendición en Papel Físico (Descontinuado)","summary":"Procedimiento histórico de timbraje en papel reemplazado por la plataforma digital CeroPapel.","content":"Procedimiento archivado: Antes de junio 2026 se requería triplicado físico de facturas y timbres manuales de contabilidad. Este flujo quedó sin vigencia tras la implementación del portal digital de rendición electrónica SSMN.","category":"Requisito administrativo","tags":["Histórico","CeroPapel","Rendición","SSMN"],"status":"obsoleto","source":"Norma / Orientación técnica","sourceReference":"Decreto Exento Municipal N° 841/2026 sobre transformación digital","programId":"praps_rehab","programIds":["praps_rehab","praps_cpu"],"isPinned":false,"author":"Klaus Bauer","createdAt":"2025-11-10T08:00:00Z","updatedAt":"2026-06-01T10:00:00Z","history":[{"id":"kh_07","date":"2025-11-10T08:00:00Z","user":"Klaus Bauer","action":"Creación","details":"Instrucción inicial de rendición."},{"id":"kh_08","date":"2026-06-01T10:00:00Z","user":"Klaus Bauer","action":"Cambio de estado","details":"Declarado obsoleto por entrada en vigencia del sistema digital."}]}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    program_ids = EXCLUDED.program_ids,
+    title = EXCLUDED.title,
+    category = EXCLUDED.category,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    author = EXCLUDED.author,
+    date = EXCLUDED.date,
+    archived = EXCLUDED.archived,
+    data = EXCLUDED.data;
+
+
+-- --- PERÍODOS FINANCIEROS ---
+
+INSERT INTO public.financial_periods (id, program_id, period_name, year, allocated_budget, executed_budget, committed_budget, available_budget, notes, data)
+VALUES ('fin_cpu_2026', 'praps_cpu', 'Presupuesto Convenio 2026 (Corte Agosto)', 2026, 0, 0, 0, 0, NULL, '{"id":"fin_cpu_2026","programId":"praps_cpu","year":2026,"periodName":"Presupuesto Convenio 2026 (Corte Agosto)","assignedBudget":68500000,"modifications":0,"executedAmount":38450000,"committedAmount":14200000,"projectedAmount":68500000,"cutoffDate":"2026-08-05","notes":"Ejecución acorde a calendario (56.1% ejecutado + 20.7% comprometido).","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    period_name = EXCLUDED.period_name,
+    year = EXCLUDED.year,
+    allocated_budget = EXCLUDED.allocated_budget,
+    executed_budget = EXCLUDED.executed_budget,
+    committed_budget = EXCLUDED.committed_budget,
+    available_budget = EXCLUDED.available_budget,
+    notes = EXCLUDED.notes,
+    data = EXCLUDED.data;
+
+INSERT INTO public.financial_periods (id, program_id, period_name, year, allocated_budget, executed_budget, committed_budget, available_budget, notes, data)
+VALUES ('fin_rehab_2026', 'praps_rehab', 'Presupuesto Convenio 2026 (Corte Agosto)', 2026, 0, 0, 0, 0, NULL, '{"id":"fin_rehab_2026","programId":"praps_rehab","year":2026,"periodName":"Presupuesto Convenio 2026 (Corte Agosto)","assignedBudget":112400000,"modifications":4500000,"executedAmount":64200000,"committedAmount":26800000,"projectedAmount":116900000,"cutoffDate":"2026-08-05","notes":"Presupuesto vigente $116.900.000 con modificación aprobada en Ordinario DISAM N° 412.","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    period_name = EXCLUDED.period_name,
+    year = EXCLUDED.year,
+    allocated_budget = EXCLUDED.allocated_budget,
+    executed_budget = EXCLUDED.executed_budget,
+    committed_budget = EXCLUDED.committed_budget,
+    available_budget = EXCLUDED.available_budget,
+    notes = EXCLUDED.notes,
+    data = EXCLUDED.data;
+
+INSERT INTO public.financial_periods (id, program_id, period_name, year, allocated_budget, executed_budget, committed_budget, available_budget, notes, data)
+VALUES ('fin_imag_2026', 'praps_imagenes', 'Presupuesto Convenio 2026 (Corte Agosto)', 2026, 0, 0, 0, 0, NULL, '{"id":"fin_imag_2026","programId":"praps_imagenes","year":2026,"periodName":"Presupuesto Convenio 2026 (Corte Agosto)","assignedBudget":84200000,"modifications":0,"executedAmount":31200000,"committedAmount":12500000,"projectedAmount":72000000,"cutoffDate":"2026-08-05","notes":"ALERTA: Baja ejecución presupuestaria (37.0% ejecutado). Retraso en facturación de mamografías.","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    period_name = EXCLUDED.period_name,
+    year = EXCLUDED.year,
+    allocated_budget = EXCLUDED.allocated_budget,
+    executed_budget = EXCLUDED.executed_budget,
+    committed_budget = EXCLUDED.committed_budget,
+    available_budget = EXCLUDED.available_budget,
+    notes = EXCLUDED.notes,
+    data = EXCLUDED.data;
+
+INSERT INTO public.financial_periods (id, program_id, period_name, year, allocated_budget, executed_budget, committed_budget, available_budget, notes, data)
+VALUES ('fin_mas_ama_2026', 'praps_mas_ama', 'Presupuesto Convenio 2026 (Corte Agosto)', 2026, 0, 0, 0, 0, NULL, '{"id":"fin_mas_ama_2026","programId":"praps_mas_ama","year":2026,"periodName":"Presupuesto Convenio 2026 (Corte Agosto)","assignedBudget":95800000,"modifications":0,"executedAmount":58900000,"committedAmount":18400000,"projectedAmount":95800000,"cutoffDate":"2026-08-05","notes":"Ejecución normal y fluida del programa (61.5% ejecutado).","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    period_name = EXCLUDED.period_name,
+    year = EXCLUDED.year,
+    allocated_budget = EXCLUDED.allocated_budget,
+    executed_budget = EXCLUDED.executed_budget,
+    committed_budget = EXCLUDED.committed_budget,
+    available_budget = EXCLUDED.available_budget,
+    notes = EXCLUDED.notes,
+    data = EXCLUDED.data;
+
+INSERT INTO public.financial_periods (id, program_id, period_name, year, allocated_budget, executed_budget, committed_budget, available_budget, notes, data)
+VALUES ('fin_resp_2026', 'praps_respiratoria', 'Presupuesto Convenio 2026 (Corte Agosto)', 2026, 0, 0, 0, 0, NULL, '{"id":"fin_resp_2026","programId":"praps_respiratoria","year":2026,"periodName":"Presupuesto Convenio 2026 (Corte Agosto)","assignedBudget":145000000,"modifications":12000000,"executedAmount":102500000,"committedAmount":32400000,"projectedAmount":157000000,"cutoffDate":"2026-08-05","notes":"Presupuesto vigente $157.000.000. Alta ejecución por contingencia invernal (65.3% ejecutado + 20.6% comprometido).","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    period_name = EXCLUDED.period_name,
+    year = EXCLUDED.year,
+    allocated_budget = EXCLUDED.allocated_budget,
+    executed_budget = EXCLUDED.executed_budget,
+    committed_budget = EXCLUDED.committed_budget,
+    available_budget = EXCLUDED.available_budget,
+    notes = EXCLUDED.notes,
+    data = EXCLUDED.data;
+
+INSERT INTO public.financial_periods (id, program_id, period_name, year, allocated_budget, executed_budget, committed_budget, available_budget, notes, data)
+VALUES ('fin_resp_ci_2026', 'praps_respiratoria', 'Fondo Específico Campaña de Invierno 2026', 2026, 0, 0, 0, 0, NULL, '{"id":"fin_resp_ci_2026","programId":"praps_respiratoria","subprogramId":"Campaña de Invierno","year":2026,"periodName":"Fondo Específico Campaña de Invierno 2026","assignedBudget":42000000,"modifications":0,"executedAmount":29800000,"committedAmount":9200000,"projectedAmount":42000000,"cutoffDate":"2026-08-05","notes":"Contratos honorarios kinésicos y stock de corticoides/inhaladores.","createdAt":"2026-05-01T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    period_name = EXCLUDED.period_name,
+    year = EXCLUDED.year,
+    allocated_budget = EXCLUDED.allocated_budget,
+    executed_budget = EXCLUDED.executed_budget,
+    committed_budget = EXCLUDED.committed_budget,
+    available_budget = EXCLUDED.available_budget,
+    notes = EXCLUDED.notes,
+    data = EXCLUDED.data;
+
+INSERT INTO public.financial_periods (id, program_id, period_name, year, allocated_budget, executed_budget, committed_budget, available_budget, notes, data)
+VALUES ('fin_mayores_2026', 'prog_personas_mayores', 'Presupuesto Programa 2026 (Corte Agosto)', 2026, 0, 0, 0, 0, NULL, '{"id":"fin_mayores_2026","programId":"prog_personas_mayores","year":2026,"periodName":"Presupuesto Programa 2026 (Corte Agosto)","assignedBudget":78000000,"modifications":0,"executedAmount":45600000,"committedAmount":15200000,"projectedAmount":78000000,"cutoffDate":"2026-08-05","notes":"Ejecución financiera al 58.5%.","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    period_name = EXCLUDED.period_name,
+    year = EXCLUDED.year,
+    allocated_budget = EXCLUDED.allocated_budget,
+    executed_budget = EXCLUDED.executed_budget,
+    committed_budget = EXCLUDED.committed_budget,
+    available_budget = EXCLUDED.available_budget,
+    notes = EXCLUDED.notes,
+    data = EXCLUDED.data;
+
+
+-- --- COMPONENTES PRESUPUESTARIOS ---
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_cpu_rrhh', 'praps_cpu', 'RRHH', 42000000, 25200000, 'Subtítulo 21 - Personal', NULL, '{"id":"bc_cpu_rrhh","programId":"praps_cpu","name":"RRHH","budgetToSpend":42000000,"spentAmount":25200000,"category":"Subtítulo 21 - Personal","notes":"Médico paliativista, enfermera de enlace y trabajadora social (44h dedicadas a visitas domiciliarias)","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_cpu_movil', 'praps_cpu', 'Movilización', 6500000, 3800000, 'Subtítulo 22 - Bienes y Servicios', NULL, '{"id":"bc_cpu_movil","programId":"praps_cpu","name":"Movilización","budgetToSpend":6500000,"spentAmount":3800000,"category":"Subtítulo 22 - Bienes y Servicios","notes":"Arriendo de móvil exclusivo, chofer y combustible para atención domiciliaria de pacientes postrados","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_cpu_insumos', 'praps_cpu', 'Insumos', 8000000, 4250000, 'Subtítulo 22 - Insumos Clínicos', NULL, '{"id":"bc_cpu_insumos","programId":"praps_cpu","name":"Insumos","budgetToSpend":8000000,"spentAmount":4250000,"category":"Subtítulo 22 - Insumos Clínicos","notes":"Apósitos para curaciones avanzadas, espumas de poliuretano, sondas Foley, jeringas y guantes","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_cpu_farmacos', 'praps_cpu', 'Fármacos', 7500000, 3600000, 'Subtítulo 22 - Fármacos y Medicamentos', NULL, '{"id":"bc_cpu_farmacos","programId":"praps_cpu","name":"Fármacos","budgetToSpend":7500000,"spentAmount":3600000,"category":"Subtítulo 22 - Fármacos y Medicamentos","notes":"Analgesia mayor, opioides (morfina, tramadol), antieméticos y coadyuvantes para manejo del dolor","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_cpu_oxigeno', 'praps_cpu', 'Oxígeno', 4500000, 1600000, 'Subtítulo 22 - Gases Clínicos y Equipos', NULL, '{"id":"bc_cpu_oxigeno","programId":"praps_cpu","name":"Oxígeno","budgetToSpend":4500000,"spentAmount":1600000,"category":"Subtítulo 22 - Gases Clínicos y Equipos","notes":"Oxigenoterapia domiciliaria, recargas de cilindros portátiles y mantención de concentradores","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_rehab_rrhh', 'praps_rehab', 'RRHH', 78000000, 45000000, 'Subtítulo 21 - Personal', NULL, '{"id":"bc_rehab_rrhh","programId":"praps_rehab","name":"RRHH","budgetToSpend":78000000,"spentAmount":45000000,"category":"Subtítulo 21 - Personal","notes":"Kinesiólogos, Terapeutas Ocupacionales y Fonoaudiólogos en salas de Rehabilitación con Base Comunitaria (RBC)","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_rehab_equip', 'praps_rehab', 'Equipamiento y Ayudas Técnicas', 20000000, 11200000, 'Subtítulo 29 - Equipamiento', NULL, '{"id":"bc_rehab_equip","programId":"praps_rehab","name":"Equipamiento y Ayudas Técnicas","budgetToSpend":20000000,"spentAmount":11200000,"category":"Subtítulo 29 - Equipamiento","notes":"Adquisición de sillas de ruedas estándar/neurológicas, andadores, bastones y cojines antiescaras","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_rehab_insumos', 'praps_rehab', 'Insumos Terapéuticos', 10400000, 5800000, 'Subtítulo 22 - Insumos', NULL, '{"id":"bc_rehab_insumos","programId":"praps_rehab","name":"Insumos Terapéuticos","budgetToSpend":10400000,"spentAmount":5800000,"category":"Subtítulo 22 - Insumos","notes":"Material fungible de terapia ocupacional, bandas elásticas, electrodos y gel conductor","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_rehab_movil', 'praps_rehab', 'Movilización', 4000000, 2200000, 'Subtítulo 22 - Traslados', NULL, '{"id":"bc_rehab_movil","programId":"praps_rehab","name":"Movilización","budgetToSpend":4000000,"spentAmount":2200000,"category":"Subtítulo 22 - Traslados","notes":"Traslados comunitarios y visitas de seguimiento domiciliario","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_imag_servicios', 'praps_imagenes', 'Servicios Radiológicos y Mamografías', 48000000, 18500000, 'Subtítulo 22 - Servicios Externos', NULL, '{"id":"bc_imag_servicios","programId":"praps_imagenes","name":"Servicios Radiológicos y Mamografías","budgetToSpend":48000000,"spentAmount":18500000,"category":"Subtítulo 22 - Servicios Externos","notes":"Convenio de compras de mamografías bilaterales en red privada y ecotomografías mamarias","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_imag_rrhh', 'praps_imagenes', 'RRHH', 24200000, 9800000, 'Subtítulo 21 - Personal', NULL, '{"id":"bc_imag_rrhh","programId":"praps_imagenes","name":"RRHH","budgetToSpend":24200000,"spentAmount":9800000,"category":"Subtítulo 21 - Personal","notes":"Tecnólogos médicos y TENS de apoyo para sala osteopulmonar y mamografía comunal","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_imag_insumos', 'praps_imagenes', 'Insumos y Mantención', 12000000, 2900000, 'Subtítulo 22 - Mantención e Insumos', NULL, '{"id":"bc_imag_insumos","programId":"praps_imagenes","name":"Insumos y Mantención","budgetToSpend":12000000,"spentAmount":2900000,"category":"Subtítulo 22 - Mantención e Insumos","notes":"Protección radiológica, mantenciones preventivas y licencias de software PACS/RIS","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_mama_rrhh', 'praps_mas_ama', 'RRHH', 74000000, 44000000, 'Subtítulo 21 - Personal', NULL, '{"id":"bc_mama_rrhh","programId":"praps_mas_ama","name":"RRHH","budgetToSpend":74000000,"spentAmount":44000000,"category":"Subtítulo 21 - Personal","notes":"Duplas profesionales (Kinesiólogos y Terapeutas Ocupacionales) para talleres de estimulación comunitaria","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_mama_material', 'praps_mas_ama', 'Material Didáctico y Estimulación', 12800000, 7600000, 'Subtítulo 22 - Materiales', NULL, '{"id":"bc_mama_material","programId":"praps_mas_ama","name":"Material Didáctico y Estimulación","budgetToSpend":12800000,"spentAmount":7600000,"category":"Subtítulo 22 - Materiales","notes":"Cuadernillos cognitivos, juegos psicomotores, pesas livianas y elementos de entrenamiento funcional","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_mama_movil', 'praps_mas_ama', 'Movilización y Eventos', 9000000, 5100000, 'Subtítulo 22 - Movilización', NULL, '{"id":"bc_mama_movil","programId":"praps_mas_ama","name":"Movilización y Eventos","budgetToSpend":9000000,"spentAmount":5100000,"category":"Subtítulo 22 - Movilización","notes":"Traslados a clubes de adulto mayor, juntas vecinales y encuentros comunitarios de egreso","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_resp_rrhh', 'praps_respiratoria', 'RRHH', 54000000, 32000000, 'Subtítulo 21 - Personal', NULL, '{"id":"bc_resp_rrhh","programId":"praps_respiratoria","name":"RRHH","budgetToSpend":54000000,"spentAmount":32000000,"category":"Subtítulo 21 - Personal","notes":"Kinesiólogos de refuerzo IRA/ERA para salas respiratorias y turnos de extensión","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_resp_farmacos', 'praps_respiratoria', 'Fármacos e Inhaladores', 18000000, 10500000, 'Subtítulo 22 - Fármacos', NULL, '{"id":"bc_resp_farmacos","programId":"praps_respiratoria","name":"Fármacos e Inhaladores","budgetToSpend":18000000,"spentAmount":10500000,"category":"Subtítulo 22 - Fármacos","notes":"Salbutamol, bromuro de ipratropio, fluticasona, budesonida y aerocámaras con válvula","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_resp_oxigeno', 'praps_respiratoria', 'Oxígeno y Espirometría', 11000000, 6400000, 'Subtítulo 22 - Gases e Insumos', NULL, '{"id":"bc_resp_oxigeno","programId":"praps_respiratoria","name":"Oxígeno y Espirometría","budgetToSpend":11000000,"spentAmount":6400000,"category":"Subtítulo 22 - Gases e Insumos","notes":"Cilindros de oxígeno para urgencias, boquillas y filtros de espirometría para control crónico","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_mayores_rrhh', 'prog_personas_mayores', 'RRHH', 46000000, 26000000, 'Subtítulo 21 - Personal', NULL, '{"id":"bc_mayores_rrhh","programId":"prog_personas_mayores","name":"RRHH","budgetToSpend":46000000,"spentAmount":26000000,"category":"Subtítulo 21 - Personal","notes":"Enfermeros/as y TENS dedicados a aplicación de EMPAM comunal y pesquisa activa","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_mayores_eleam', 'prog_personas_mayores', 'Insumos y Apoyo ELEAM', 15000000, 8900000, 'Subtítulo 22 - Cuidados y Prevención', NULL, '{"id":"bc_mayores_eleam","programId":"prog_personas_mayores","name":"Insumos y Apoyo ELEAM","budgetToSpend":15000000,"spentAmount":8900000,"category":"Subtítulo 22 - Cuidados y Prevención","notes":"Kits de curación, suplementos, insumos de higiene y elementos para personas mayores institucionalizadas","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_components (id, program_id, name, budget_to_spend, spent_amount, category, description, data)
+VALUES ('bc_mayores_movil', 'prog_personas_mayores', 'Movilización y Operativos en Terreno', 9000000, 4900000, 'Subtítulo 22 - Movilización', NULL, '{"id":"bc_mayores_movil","programId":"prog_personas_mayores","name":"Movilización y Operativos en Terreno","budgetToSpend":9000000,"spentAmount":4900000,"category":"Subtítulo 22 - Movilización","notes":"Furgón para operativos de salud en clubes, visitas de seguimiento y pesquisa comunitaria","createdAt":"2026-01-10T10:00:00Z","updatedAt":"2026-08-05T14:00:00Z"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    name = EXCLUDED.name,
+    budget_to_spend = EXCLUDED.budget_to_spend,
+    spent_amount = EXCLUDED.spent_amount,
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    data = EXCLUDED.data;
+
+
+-- --- NOTAS PRESUPUESTARIAS HISTÓRICAS ---
+
+INSERT INTO public.budget_2025_notes (id, program_id, note, author, date, type, budget_amount, executed_amount, fulfillment_rate, data)
+VALUES ('13165b8f-e725-4aab-8e35-f54fdb3c098a', 'praps_cpu', 'Presupuesto 2025', '', '2026-09-24T11:31:31.702Z', 'presupuesto', 64000000, 63488000, 99.2, '{"programId":"praps_cpu","budgetAmount":64000000,"executedAmount":63488000,"fulfillmentRate":99.2,"note":"Presupuesto 2025"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    note = EXCLUDED.note,
+    author = EXCLUDED.author,
+    date = EXCLUDED.date,
+    type = EXCLUDED.type,
+    budget_amount = EXCLUDED.budget_amount,
+    executed_amount = EXCLUDED.executed_amount,
+    fulfillment_rate = EXCLUDED.fulfillment_rate,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_2025_notes (id, program_id, note, author, date, type, budget_amount, executed_amount, fulfillment_rate, data)
+VALUES ('084874ed-4780-4339-9011-5452807074af', 'praps_rehab', 'Presupuesto 2025', '', '2026-09-24T11:31:31.702Z', 'presupuesto', 108000000, 106920000, 99, '{"programId":"praps_rehab","budgetAmount":108000000,"executedAmount":106920000,"fulfillmentRate":99,"note":"Presupuesto 2025"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    note = EXCLUDED.note,
+    author = EXCLUDED.author,
+    date = EXCLUDED.date,
+    type = EXCLUDED.type,
+    budget_amount = EXCLUDED.budget_amount,
+    executed_amount = EXCLUDED.executed_amount,
+    fulfillment_rate = EXCLUDED.fulfillment_rate,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_2025_notes (id, program_id, note, author, date, type, budget_amount, executed_amount, fulfillment_rate, data)
+VALUES ('7a7dcdeb-9f18-44b7-981b-61ae360ba269', 'praps_imagenes', 'Presupuesto 2025', '', '2026-09-24T11:31:31.702Z', 'presupuesto', 80000000, 78240000, 97.8, '{"programId":"praps_imagenes","budgetAmount":80000000,"executedAmount":78240000,"fulfillmentRate":97.8,"note":"Presupuesto 2025"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    note = EXCLUDED.note,
+    author = EXCLUDED.author,
+    date = EXCLUDED.date,
+    type = EXCLUDED.type,
+    budget_amount = EXCLUDED.budget_amount,
+    executed_amount = EXCLUDED.executed_amount,
+    fulfillment_rate = EXCLUDED.fulfillment_rate,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_2025_notes (id, program_id, note, author, date, type, budget_amount, executed_amount, fulfillment_rate, data)
+VALUES ('f76815ff-c040-4345-8e88-5e4d2bdaa585', 'praps_mas_ama', 'Presupuesto 2025', '', '2026-09-24T11:31:31.702Z', 'presupuesto', 92000000, 91540000, 99.5, '{"programId":"praps_mas_ama","budgetAmount":92000000,"executedAmount":91540000,"fulfillmentRate":99.5,"note":"Presupuesto 2025"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    note = EXCLUDED.note,
+    author = EXCLUDED.author,
+    date = EXCLUDED.date,
+    type = EXCLUDED.type,
+    budget_amount = EXCLUDED.budget_amount,
+    executed_amount = EXCLUDED.executed_amount,
+    fulfillment_rate = EXCLUDED.fulfillment_rate,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_2025_notes (id, program_id, note, author, date, type, budget_amount, executed_amount, fulfillment_rate, data)
+VALUES ('4d5bc465-cd8f-417f-ba8c-46614bb161ed', 'praps_respiratoria', 'Presupuesto 2025', '', '2026-09-24T11:31:31.702Z', 'presupuesto', 82000000, 80688000, 98.4, '{"programId":"praps_respiratoria","budgetAmount":82000000,"executedAmount":80688000,"fulfillmentRate":98.4,"note":"Presupuesto 2025"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    note = EXCLUDED.note,
+    author = EXCLUDED.author,
+    date = EXCLUDED.date,
+    type = EXCLUDED.type,
+    budget_amount = EXCLUDED.budget_amount,
+    executed_amount = EXCLUDED.executed_amount,
+    fulfillment_rate = EXCLUDED.fulfillment_rate,
+    data = EXCLUDED.data;
+
+INSERT INTO public.budget_2025_notes (id, program_id, note, author, date, type, budget_amount, executed_amount, fulfillment_rate, data)
+VALUES ('09c156f3-eeb5-494f-8123-2e4d42dde7c8', 'prog_personas_mayores', 'Presupuesto 2025', '', '2026-09-24T11:31:31.702Z', 'presupuesto', 68000000, 67388000, 99.1, '{"programId":"prog_personas_mayores","budgetAmount":68000000,"executedAmount":67388000,"fulfillmentRate":99.1,"note":"Presupuesto 2025"}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+    program_id = EXCLUDED.program_id,
+    note = EXCLUDED.note,
+    author = EXCLUDED.author,
+    date = EXCLUDED.date,
+    type = EXCLUDED.type,
+    budget_amount = EXCLUDED.budget_amount,
+    executed_amount = EXCLUDED.executed_amount,
+    fulfillment_rate = EXCLUDED.fulfillment_rate,
+    data = EXCLUDED.data;

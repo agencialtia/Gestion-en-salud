@@ -108,6 +108,7 @@ import { ContactosView } from './ContactosView';
 import { DocumentosView } from './DocumentosView';
 import { ConocimientoView } from './ConocimientoView';
 import { CutTableModal } from '../common/CutTableModal';
+import { EditProgramModal } from '../common/EditProgramModal';
 import { HEALTH_PROGRAMS } from '../../data/initialData';
 import {
   getProgramCutConfig,
@@ -196,6 +197,7 @@ export const ProgramDetailView: React.FC<{
     }
   });
   const [isCutTableModalOpen, setIsCutTableModalOpen] = useState(false);
+  const [isEditProgramModalOpen, setIsEditProgramModalOpen] = useState(false);
   const [showFullCutTable, setShowFullCutTable] = useState(true);
 
   const handleSaveCutConfig = (updatedConfig: ProgramCutConfig) => {
@@ -783,11 +785,21 @@ export const ProgramDetailView: React.FC<{
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
         {/* Title & Editable Description */}
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: currentProgram.color }} />
-            <span className="font-mono text-xs font-bold text-slate-400">
-              {currentProgram.code}
-            </span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: currentProgram.color }} />
+              <span className="font-mono text-xs font-bold text-slate-400">
+                {currentProgram.code}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsEditProgramModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-xl transition-all cursor-pointer shadow-2xs"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              <span>Editar Programa</span>
+            </button>
           </div>
 
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">
@@ -5854,6 +5866,13 @@ export const ProgramDetailView: React.FC<{
         programId={currentProgram.id}
         config={getProgramCutConfig(currentProgram.id, selectedCut, customCutConfigs)}
         onSaveConfig={handleSaveCutConfig}
+      />
+
+      {/* Modal to edit full program parameters */}
+      <EditProgramModal
+        isOpen={isEditProgramModalOpen}
+        onClose={() => setIsEditProgramModalOpen(false)}
+        program={currentProgram}
       />
     </div>
   );

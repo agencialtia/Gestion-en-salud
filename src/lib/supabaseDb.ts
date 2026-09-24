@@ -82,6 +82,7 @@ export function fromDbProgram(row: any): HealthProgram {
 }
 
 export function toDbProgram(p: HealthProgram): any {
+  const budget = Number(p.presupuestoTotal) || Number(p.annualBudget) || 0;
   return {
     id: p.id,
     code: p.code || '',
@@ -91,7 +92,8 @@ export function toDbProgram(p: HealthProgram): any {
     referente: p.referente || '',
     email: p.email || null,
     telefono: p.telefono || null,
-    presupuesto_total: p.presupuestoTotal || p.annualBudget || 0,
+    presupuesto_total: budget,
+    annual_budget: budget,
     presupuesto_ejecutado: p.presupuestoEjecutado || 0,
     presupuesto_comprometido: p.presupuestoComprometido || 0,
     color: p.color || '#0284c7',
@@ -113,16 +115,17 @@ export function fromDbTask(row: any): Task {
     programId: row.program_id || extra.programId,
     title: row.title || extra.title || '',
     description: row.description || extra.description || '',
-    assignedTo: row.assigned_to || extra.assignedTo || '',
+    assignedTo: row.assigned_to || extra.assignedTo || extra.responsible || '',
+    responsible: row.assigned_to || extra.responsible || extra.assignedTo || 'Equipo Gestor',
     assignedRole: row.assigned_role || extra.assignedRole || '',
     establishmentId: row.establishment_id || extra.establishmentId || undefined,
     startDate: row.start_date || extra.startDate || undefined,
     dueDate: row.due_date || extra.dueDate || undefined,
     endDate: row.end_date || extra.endDate || undefined,
-    status: row.status || extra.status || 'pendiente',
+    status: row.status || extra.status || 'por_hacer',
     priority: row.priority || extra.priority || 'media',
     progress: Number(row.progress ?? extra.progress ?? 0),
-    category: row.category || extra.category || 'General',
+    category: typeof row.category === 'string' ? row.category : (extra.category || 'General'),
     checklist: Array.isArray(row.checklist) ? row.checklist : (extra.checklist || []),
     budgetAssigned: Number(row.budget_assigned ?? extra.budgetAssigned ?? 0),
     milestone: Boolean(row.milestone ?? extra.milestone ?? false),
@@ -138,13 +141,13 @@ export function toDbTask(t: Task): any {
     program_id: t.programId || 'praps_cpu',
     title: t.title || 'Nueva Tarea',
     description: t.description || '',
-    assigned_to: t.assignedTo || null,
+    assigned_to: t.assignedTo || t.responsible || null,
     assigned_role: t.assignedRole || null,
     establishment_id: t.establishmentId || null,
     start_date: t.startDate || null,
     due_date: t.dueDate || null,
     end_date: t.endDate || null,
-    status: t.status || 'pendiente',
+    status: t.status || 'por_hacer',
     priority: t.priority || 'media',
     progress: t.progress !== undefined ? t.progress : 0,
     category: typeof t.category === 'string' ? t.category : t.category?.name || 'General',
@@ -160,46 +163,60 @@ export function toDbTask(t: Task): any {
 // 3. Purchases
 export function fromDbPurchase(row: any): Purchase {
   const extra = row.data && typeof row.data === 'object' ? row.data : {};
+  const estimated = Number(row.estimated_amount ?? row.amount ?? extra.estimatedAmount ?? 0);
   return {
     ...extra,
     id: row.id,
     programId: row.program_id || extra.programId,
     establishmentId: row.establishment_id || extra.establishmentId || undefined,
     code: row.code || extra.code || '',
-    description: row.description || extra.description || '',
+    description: row.description || row.title || extra.description || '',
+    itemOrService: row.title || extra.itemOrService || row.description || 'Compra / Adquisición',
     justification: row.justification || extra.justification || '',
-    estimatedAmount: Number(row.estimated_amount ?? extra.estimatedAmount ?? 0),
+    estimatedAmount: estimated,
     actualAmount: row.actual_amount !== null && row.actual_amount !== undefined ? Number(row.actual_amount) : extra.actualAmount,
     supplier: row.supplier || extra.supplier || '',
     status: row.status || extra.status || 'solicitado',
+    stage: row.stage || extra.stage || 'solicitud',
     priority: row.priority || extra.priority || 'media',
     category: row.category || extra.category || 'general',
-    requestDate: row.request_date || extra.requestDate || undefined,
-    ordenCompra: row.orden_compra || extra.ordenCompra || undefined,
+    requestDate: row.request_date || row.date || extra.requestDate || undefined,
+    ordenCompra: row.orden_compra || row.oc_number || extra.ordenCompra || undefined,
     folioMercadoPublico: row.folio_mercado_publico || extra.folioMercadoPublico || undefined,
     responsibleUser: row.responsible_user || extra.responsibleUser || undefined,
+    receptionStatus: row.reception_status || extra.receptionStatus || 'pendiente',
+    invoiceStatus: row.invoice_status || extra.invoiceStatus || 'sin_factura',
     createdAt: row.created_at || extra.createdAt || new Date().toISOString(),
   };
 }
 
 export function toDbPurchase(p: Purchase): any {
+  const titleVal = p.itemOrService || p.description || p.category || p.code || 'Solicitud de Compra';
+  const amountVal = p.estimatedAmount || p.totalAmount || p.actualAmount || 0;
   return {
     id: ensureUUID(p.id),
     program_id: p.programId || 'praps_cpu',
+    title: titleVal,
+    amount: amountVal,
     establishment_id: p.establishmentId || null,
     code: p.code || 'PUR_001',
-    description: p.description || '',
+    description: p.description || titleVal,
     justification: p.justification || '',
-    estimated_amount: p.estimatedAmount || 0,
+    estimated_amount: p.estimatedAmount || amountVal,
     actual_amount: p.actualAmount !== undefined ? p.actualAmount : null,
     supplier: p.supplier || '',
     status: p.status || 'solicitado',
+    stage: p.macroState || p.stage || p.status || 'solicitud',
     priority: p.priority || 'media',
     category: p.category || 'general',
     request_date: p.requestDate || null,
+    date: p.requestDate || new Date().toISOString().split('T')[0],
     orden_compra: p.ordenCompra || null,
+    oc_number: p.ordenCompra || null,
     folio_mercado_publico: p.folioMercadoPublico || null,
     responsible_user: p.responsibleUser || null,
+    reception_status: p.receptionStatus || 'pendiente',
+    invoice_status: p.invoiceStatus || 'sin_factura',
     data: { ...p },
   };
 }
@@ -207,17 +224,20 @@ export function toDbPurchase(p: Purchase): any {
 // 4. Meetings
 export function fromDbMeeting(row: any): Meeting {
   const extra = row.data && typeof row.data === 'object' ? row.data : {};
+  const participantsList = Array.isArray(row.participants) && row.participants.length > 0
+    ? row.participants
+    : (Array.isArray(row.attendees) && row.attendees.length > 0 ? row.attendees : (extra.participants || []));
   return {
     ...extra,
     id: row.id,
     programId: row.program_id || extra.programId,
     title: row.title || extra.title || '',
     date: row.date || extra.date || '',
-    time: row.time || extra.time || '',
+    time: row.time || row.start_time || extra.time || '',
     location: row.location || extra.location || '',
     status: row.status || extra.status || 'programada',
-    summary: row.summary || extra.summary || '',
-    participants: Array.isArray(row.participants) ? row.participants : (extra.participants || []),
+    summary: row.summary || row.notes || extra.summary || '',
+    participants: participantsList,
     agreements: Array.isArray(row.agreements) ? row.agreements : (extra.agreements || []),
     commitments: Array.isArray(row.commitments) ? row.commitments : (extra.commitments || []),
     createdAt: row.created_at || extra.createdAt || new Date().toISOString(),
@@ -228,13 +248,16 @@ export function toDbMeeting(m: Meeting): any {
   return {
     id: ensureUUID(m.id),
     program_id: m.programId || 'praps_cpu',
-    title: m.title || '',
+    title: m.title || 'Reunión de Coordinación',
     date: m.date || new Date().toISOString().split('T')[0],
     time: m.time || '10:00',
+    start_time: m.time || '10:00',
     location: m.location || '',
     status: m.status || 'programada',
     summary: m.summary || '',
+    notes: m.summary || '',
     participants: Array.isArray(m.participants) ? m.participants : [],
+    attendees: Array.isArray(m.participants) ? m.participants : [],
     agreements: Array.isArray(m.agreements) ? m.agreements : [],
     commitments: Array.isArray(m.commitments) ? m.commitments : [],
     data: { ...m },

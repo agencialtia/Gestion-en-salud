@@ -4672,18 +4672,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       uploadedAt: nowIso,
       uploadedBy: currentUser.name,
     };
+    let updatedEmail: PendingEmail | undefined;
     setEmails((prev) =>
       prev.map((e) => {
         if (e.id !== emailId) return e;
         const currentAtt = e.attachments || [];
-        return {
+        updatedEmail = {
           ...e,
           attachments: [newAtt, ...currentAtt],
           updatedAt: nowIso,
           updatedBy: currentUser.name,
         };
+        return updatedEmail;
       })
     );
+    if (updatedEmail && isSupabaseConfigured()) {
+      upsertEmailInSupabase(updatedEmail).catch((err) => console.warn('Supabase sync email attachment error:', err?.message));
+    }
     logAudit('Correos', emailId, 'editar', `Documento "${newAtt.name}" adjuntado al requerimiento`);
     showToast(`Documento "${newAtt.name}" adjuntado`, 'success');
     return newAtt;
@@ -4691,17 +4696,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const deleteEmailAttachment = (emailId: string, attachmentId: string) => {
     const nowIso = new Date().toISOString();
+    let updatedEmail: PendingEmail | undefined;
     setEmails((prev) =>
       prev.map((e) => {
         if (e.id !== emailId) return e;
-        return {
+        updatedEmail = {
           ...e,
           attachments: (e.attachments || []).filter((a) => a.id !== attachmentId),
           updatedAt: nowIso,
           updatedBy: currentUser.name,
         };
+        return updatedEmail;
       })
     );
+    if (updatedEmail && isSupabaseConfigured()) {
+      upsertEmailInSupabase(updatedEmail).catch((err) => console.warn('Supabase delete email attachment error:', err?.message));
+    }
     logAudit('Correos', emailId, 'editar', `Adjunto ${attachmentId} eliminado`);
     showToast('Documento adjunto eliminado', 'info');
   };
@@ -4873,31 +4883,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       uploadedBy: currentUser.name,
     };
 
+    let updatedQ: Question | undefined;
     setQuestions((prev) =>
       prev.map((q) => {
         if (q.id !== questionId) return q;
-        return {
+        updatedQ = {
           ...q,
           attachments: [newAtt, ...(q.attachments || [])],
           updatedAt: new Date().toISOString(),
         };
+        return updatedQ;
       })
     );
+    if (updatedQ && isSupabaseConfigured()) {
+      upsertQuestionInSupabase(updatedQ).catch((err) => console.warn('Supabase question attachment sync error:', err));
+    }
     showToast('Archivo adjuntado a la consulta', 'success');
     return newAtt;
   };
 
   const deleteQuestionAttachment = (questionId: string, attachmentId: string) => {
+    let updatedQ: Question | undefined;
     setQuestions((prev) =>
       prev.map((q) => {
         if (q.id !== questionId) return q;
-        return {
+        updatedQ = {
           ...q,
           attachments: (q.attachments || []).filter((a) => a.id !== attachmentId),
           updatedAt: new Date().toISOString(),
         };
+        return updatedQ;
       })
     );
+    if (updatedQ && isSupabaseConfigured()) {
+      upsertQuestionInSupabase(updatedQ).catch((err) => console.warn('Supabase question attachment delete error:', err));
+    }
     showToast('Archivo adjunto eliminado', 'info');
   };
 
