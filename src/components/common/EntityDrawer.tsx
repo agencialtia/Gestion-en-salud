@@ -740,13 +740,13 @@ export const EntityDrawer: React.FC<{
     }
   };
 
-  const handleSaveIndicator = () => {
+  const handleSaveIndicator = (closeAfterSave = false) => {
     if (!indicator) return;
     const numAnnualPorc = !isNaN(parseFloat(indMetaAnualPorc)) ? parseFloat(indMetaAnualPorc) : (indicator.annualTarget || 100);
     const numAnnualCant = indMetaAnualCant && !isNaN(parseFloat(indMetaAnualCant)) ? parseFloat(indMetaAnualCant) : undefined;
     const numCortePorc = !isNaN(parseFloat(indMetaCortePorc)) ? parseFloat(indMetaCortePorc) : numAnnualPorc;
     const numCorteCant = indMetaCorteCant && !isNaN(parseFloat(indMetaCorteCant)) ? parseFloat(indMetaCorteCant) : undefined;
-    const numCurrentPorc = !isNaN(parseFloat(indCurrent)) ? parseFloat(indCurrent) : (indicator.currentResult || 0);
+    const numCurrentPorc = !isNaN(parseFloat(indCurrent)) ? parseFloat(indCurrent) : (indicator.currentResult ?? 0);
     const numCurrentCant = indCurrentCant && !isNaN(parseFloat(indCurrentCant)) ? parseFloat(indCurrentCant) : undefined;
 
     const cutData = {
@@ -761,11 +761,15 @@ export const EntityDrawer: React.FC<{
 
     const c1 = indCorte === '1° corte'
       ? cutData
-      : (indicator.corte1 && indicator.corte1.target !== undefined ? indicator.corte1 : { target: numCortePorc, result: numCurrentPorc, date: '2026-07-31', source: indicator.source || 'REM / Rayen' });
+      : (indicator.corte1 && indicator.corte1.target !== undefined
+          ? indicator.corte1
+          : { target: numCortePorc, result: numCurrentPorc, date: '2026-07-31', source: indicator.source || 'REM / Rayen' });
 
     const c2 = indCorte === '2° corte'
       ? cutData
-      : (indicator.corte2 && indicator.corte2.target !== undefined ? indicator.corte2 : { target: numAnnualPorc, result: numCurrentPorc, date: '2026-12-31', source: indicator.source || 'REM / Rayen' });
+      : (indicator.corte2 && indicator.corte2.target !== undefined
+          ? indicator.corte2
+          : { target: numAnnualPorc, result: 0, date: '2026-12-31', source: indicator.source || 'REM / Rayen' });
 
     const c3 = indCorte === '3° corte'
       ? cutData
@@ -803,8 +807,14 @@ export const EntityDrawer: React.FC<{
     });
 
     setIndSavedSuccess(true);
-    showToast('Indicador guardado exitosamente en base de datos', 'success');
-    setTimeout(() => setIndSavedSuccess(false), 3000);
+    showToast('Indicador guardado exitosamente', 'success');
+    if (closeAfterSave) {
+      setTimeout(() => {
+        onClose();
+      }, 300);
+    } else {
+      setTimeout(() => setIndSavedSuccess(false), 3000);
+    }
   };
 
   // ==========================================
@@ -827,15 +837,15 @@ export const EntityDrawer: React.FC<{
               <div className="shrink-0 flex items-center gap-1.5">
                 <ProgramBadge programId={currentProgramId} />
                 <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-lg shrink-0">
-                  {indicator.code}
+                  {indCode || indicator.code}
                 </span>
               </div>
               <div className="min-w-0">
                 <h1 className="text-sm sm:text-base md:text-lg font-bold text-slate-900 truncate">
-                  {indicator.name}
+                  {indName || indicator.name}
                 </h1>
                 <p className="text-[11px] sm:text-xs text-slate-500 truncate hidden xs:block">
-                  {indicator.componente || 'Ficha Técnica de Indicador y Cumplimiento Ministerial'}
+                  {indComponente || indicator.componente || 'Ficha Técnica de Indicador y Cumplimiento Ministerial'}
                 </p>
               </div>
             </div>
@@ -843,8 +853,18 @@ export const EntityDrawer: React.FC<{
             <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/60">
               <button
                 type="button"
-                onClick={handleSaveIndicator}
-                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all min-h-[40px]"
+                onClick={() => handleSaveIndicator(false)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-100 active:scale-95 transition-all min-h-[40px]"
+                title="Guardar cambios sin cerrar"
+              >
+                <Save className="h-4 w-4 text-slate-600" />
+                <span className="hidden xs:inline">Guardar</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveIndicator(true)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all min-h-[40px]"
+                title="Guardar cambios y volver"
               >
                 {indSavedSuccess ? (
                   <>
@@ -853,8 +873,8 @@ export const EntityDrawer: React.FC<{
                   </>
                 ) : (
                   <>
-                    <Save className="h-4 w-4" />
-                    <span>Guardar Cambios</span>
+                    <Check className="h-4 w-4 text-indigo-200" />
+                    <span>Guardar y Cerrar</span>
                   </>
                 )}
               </button>
@@ -1324,6 +1344,33 @@ export const EntityDrawer: React.FC<{
                       </div>
                     );
                   })()}
+
+                  {/* Bottom Action Footer for Left Column */}
+                  <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-end gap-2.5 bg-slate-50 p-3 rounded-2xl">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs hover:bg-slate-100 transition-all min-h-[38px]"
+                    >
+                      Cerrar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveIndicator(false)}
+                      className="px-4 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 font-bold text-xs hover:bg-indigo-100 active:scale-95 transition-all inline-flex items-center gap-1.5 min-h-[38px]"
+                    >
+                      <Save className="h-4 w-4" />
+                      <span>Guardar</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveIndicator(true)}
+                      className="px-5 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 active:scale-95 transition-all shadow-sm inline-flex items-center gap-1.5 min-h-[38px]"
+                    >
+                      <Check className="h-4 w-4" />
+                      <span>Guardar y Salir</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1338,23 +1385,30 @@ export const EntityDrawer: React.FC<{
                   const liveCurrent = !isNaN(parseFloat(indCurrent))
                     ? parseFloat(indCurrent)
                     : (indicator.currentResult !== undefined && !isNaN(Number(indicator.currentResult)) ? Number(indicator.currentResult) : 0);
+                  const liveCorteMeta = !isNaN(parseFloat(indMetaCortePorc))
+                    ? parseFloat(indMetaCortePorc)
+                    : 90;
+
                   const dynamicCompliance = liveAnnual > 0
                     ? Math.min(Math.round((liveCurrent / liveAnnual) * 100), 999)
                     : 0;
 
-                  const c1TargetVal = indicator.corte1?.target !== undefined && !isNaN(Number(indicator.corte1.target))
-                    ? Number(indicator.corte1.target)
-                    : (indCorte === '1° corte' && !isNaN(parseFloat(indMetaCortePorc)) ? parseFloat(indMetaCortePorc) : liveAnnual);
-                  const c1ResultVal = indicator.corte1?.result !== undefined && !isNaN(Number(indicator.corte1.result))
-                    ? Number(indicator.corte1.result)
-                    : (indCorte === '1° corte' ? liveCurrent : 0);
+                  const c1TargetVal = indCorte === '1° corte'
+                    ? liveCorteMeta
+                    : (indicator.corte1?.target !== undefined && !isNaN(Number(indicator.corte1.target)) ? Number(indicator.corte1.target) : liveCorteMeta);
+                  const c1ResultVal = indCorte === '1° corte'
+                    ? liveCurrent
+                    : (indicator.corte1?.result !== undefined && !isNaN(Number(indicator.corte1.result)) ? Number(indicator.corte1.result) : 0);
 
-                  const c2TargetVal = indicator.corte2?.target !== undefined && !isNaN(Number(indicator.corte2.target))
-                    ? Number(indicator.corte2.target)
-                    : (indCorte === '2° corte' && !isNaN(parseFloat(indMetaCortePorc)) ? parseFloat(indMetaCortePorc) : liveAnnual);
-                  const c2ResultVal = indicator.corte2?.result !== undefined && !isNaN(Number(indicator.corte2.result))
-                    ? Number(indicator.corte2.result)
-                    : (indCorte === '2° corte' ? liveCurrent : 0);
+                  const c2TargetVal = indCorte === '2° corte'
+                    ? liveCorteMeta
+                    : (indicator.corte2?.target !== undefined && !isNaN(Number(indicator.corte2.target)) ? Number(indicator.corte2.target) : liveAnnual);
+                  const c2ResultVal = indCorte === '2° corte'
+                    ? liveCurrent
+                    : (indicator.corte2?.result !== undefined && !isNaN(Number(indicator.corte2.result)) ? Number(indicator.corte2.result) : 0);
+
+                  const trafficStatus: 'green' | 'yellow' | 'red' =
+                    dynamicCompliance >= 90 ? 'green' : dynamicCompliance >= 75 ? 'yellow' : 'red';
 
                   return (
                     <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3.5">
@@ -1362,9 +1416,7 @@ export const EntityDrawer: React.FC<{
                         <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                           Resumen de Cortes y Desempeño
                         </span>
-                        <TrafficLightBadge
-                          status={dynamicCompliance >= 90 ? 'verde' : dynamicCompliance >= 75 ? 'amarillo' : 'rojo'}
-                        />
+                        <TrafficLightBadge status={trafficStatus} />
                       </div>
 
                       <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
@@ -1393,6 +1445,7 @@ export const EntityDrawer: React.FC<{
                         </div>
                         <ProgressBar
                           value={dynamicCompliance}
+                          colorScheme="indigo"
                         />
                       </div>
                     </div>
@@ -1447,7 +1500,12 @@ export const EntityDrawer: React.FC<{
                       setIndCurrent(String(val));
                       setMeasurementValue('');
                       setMeasurementNotes('');
-                      showToast('Medición guardada en el historial', 'success');
+                      updateIndicator(indicator.id, {
+                        currentResult: val,
+                        corte1: indCorte === '1° corte' ? { ...(indicator.corte1 || {}), result: val, target: parseFloat(indMetaCortePorc) || 90, date: indFechaCorte } : indicator.corte1,
+                        corte2: indCorte === '2° corte' ? { ...(indicator.corte2 || {}), result: val, target: parseFloat(indMetaCortePorc) || 100, date: indFechaCorte } : indicator.corte2,
+                      });
+                      showToast('Medición guardada en el historial y resultado actualizado', 'success');
                     }}
                     className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 active:scale-95 transition-all shadow-xs min-h-[40px]"
                   >

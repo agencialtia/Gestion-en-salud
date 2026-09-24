@@ -3811,10 +3811,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const existing = indicators.find((i) => i.id === id);
     if (!existing) return;
     const updatedInd: Indicator = { ...existing, ...updates, updatedAt: new Date().toISOString() };
-    setIndicators((prev) => prev.map((i) => (i.id === id ? updatedInd : i)));
+    setIndicators((prev) => {
+      const next = prev.map((i) => (i.id === id ? updatedInd : i));
+      try {
+        localStorage.setItem(`${STORAGE_KEY}_ind`, JSON.stringify(next));
+      } catch (e) {
+        console.warn('LocalStorage error:', e);
+      }
+      return next;
+    });
     logAudit('Indicador', id, 'editar', `Indicador ${id} actualizado`);
     showToast('Indicador actualizado y semáforos recalculados', 'info');
-    if (isSupabaseConfigured()) {
+    if (isSupabaseConfigured() && isSupabaseConnected) {
       upsertIndicatorInSupabase(updatedInd).catch((err) => console.warn('Supabase update indicator error:', err));
     }
   };
@@ -3839,11 +3847,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       measurements: [...ind.measurements, newMeas],
       updatedAt: new Date().toISOString(),
     };
-    setIndicators((prev) => prev.map((i) => (i.id === indicatorId ? updatedInd : i)));
+    setIndicators((prev) => {
+      const next = prev.map((i) => (i.id === indicatorId ? updatedInd : i));
+      try {
+        localStorage.setItem(`${STORAGE_KEY}_ind`, JSON.stringify(next));
+      } catch (e) {
+        console.warn('LocalStorage error:', e);
+      }
+      return next;
+    });
     logAudit('Indicador', indicatorId, 'editar', `Medición registrada para período ${period}: ${result}`);
     showToast('Nueva medición registrada exitosamente', 'success');
-    if (isSupabaseConfigured()) {
-      upsertIndicatorInSupabase(updatedInd).catch((err) => console.warn('Supabase indicator measurement error:', err));
+    if (isSupabaseConfigured() && isSupabaseConnected) {
+      upsertIndicatorInSupabase(updatedInd).catch((err) => console.warn('Supabase update measurement error:', err));
     }
   };
 
