@@ -107,7 +107,14 @@ import {
   INITIAL_DOCUMENT_CATEGORIES,
 } from '../data/initialData';
 import { formatDate } from '../utils/dateUtils';
-import { getSupabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  supabase,
+  getSupabase,
+  isSupabaseConfigured,
+  getSupabaseUrl,
+  getSupabaseProjectId,
+  type SupabaseClient,
+} from '../lib/supabase';
 import {
   checkSupabaseDatabaseStatus,
   pullAllFromSupabase,
@@ -405,6 +412,9 @@ interface AppContextType {
   exportTaskToGoogleCalendar: (task: Task) => Promise<boolean>;
 
   // Supabase Database Integration
+  supabase: SupabaseClient;
+  supabaseUrl: string;
+  supabaseProjectId: string;
   isSupabaseConnected: boolean;
   supabaseDbStatus: SupabaseDbStatus | null;
   supabaseSyncState: 'idle' | 'syncing' | 'synced' | 'error';
@@ -6162,6 +6172,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         syncGoogleCalendar,
         exportMeetingToGoogleCalendar,
         exportTaskToGoogleCalendar,
+        supabase,
+        supabaseUrl: getSupabaseUrl(),
+        supabaseProjectId: getSupabaseProjectId(),
         isSupabaseConnected,
         supabaseDbStatus,
         supabaseSyncState,
@@ -6189,4 +6202,12 @@ export const useApp = () => {
     throw new Error('useApp must be used within an AppProvider');
   }
   return context;
+};
+
+export const useSupabase = (): SupabaseClient => {
+  const context = useContext(AppContext);
+  if (!context) {
+    return supabase;
+  }
+  return context.supabase;
 };

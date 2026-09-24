@@ -1,34 +1,49 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Safe fallbacks only used to prevent client initialization crashes if env vars are missing
+// Safe fallbacks to prevent runtime crashes if environment variables are not yet loaded
 const FALLBACK_URL = 'https://placeholder.supabase.co';
 const FALLBACK_KEY = 'placeholder_key_not_configured';
 
-// Environment variable retrieval with support for Vite (VITE_*), Next.js (NEXT_PUBLIC_*), and localStorage
-const getEnvVar = (viteKey: string, nextKey: string): string => {
+/**
+ * Retrieves environment variables in a platform-agnostic way (Vite import.meta.env, process.env, or localStorage override)
+ * Configured according to .env.example:
+ * - VITE_SUPABASE_URL
+ * - VITE_SUPABASE_ANON_KEY
+ * - VITE_SUPABASE_PROJECT_ID
+ */
+const getEnvVar = (viteKey: string, nextKey?: string): string => {
+  // 1. Vite import.meta.env (Primary for Vite client)
   if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-    const metaVal = (import.meta as any).env[viteKey] || (import.meta as any).env[nextKey];
+    const metaVal = (import.meta as any).env[viteKey] || (nextKey ? (import.meta as any).env[nextKey] : undefined);
     if (metaVal) return String(metaVal).trim();
   }
+
+  // 2. Node / SSR / Testing process.env
   if (typeof process !== 'undefined' && process.env) {
-    const procVal = process.env[viteKey] || process.env[nextKey];
+    const procVal = process.env[viteKey] || (nextKey ? process.env[nextKey] : undefined);
     if (procVal) return String(procVal).trim();
   }
+
+  // 3. Browser localStorage override (useful for runtime testing or custom credentials)
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       const localVal =
         window.localStorage.getItem(viteKey) ||
-        window.localStorage.getItem(nextKey) ||
-        (viteKey.includes('URL') ? window.localStorage.getItem('CUSTOM_SUPABASE_URL') : window.localStorage.getItem('CUSTOM_SUPABASE_KEY'));
+        (nextKey ? window.localStorage.getItem(nextKey) : null) ||
+        (viteKey.includes('URL') ? window.localStorage.getItem('CUSTOM_SUPABASE_URL') : null) ||
+        (viteKey.includes('KEY') ? window.localStorage.getItem('CUSTOM_SUPABASE_KEY') : null);
       if (localVal) return String(localVal).trim();
     } catch {
       // localStorage restricted
     }
   }
+
   return '';
 };
 
-// Strips trailing /rest/v1, /auth/v1, or trailing slashes to ensure standard Supabase client URL
+/**
+ * Strips trailing slashes, /rest/v1, or /auth/v1 to produce a clean base Supabase URL
+ */
 export const sanitizeSupabaseUrl = (rawUrl: string): string => {
   if (!rawUrl) return '';
   let url = rawUrl.trim();
@@ -37,6 +52,9 @@ export const sanitizeSupabaseUrl = (rawUrl: string): string => {
   return url;
 };
 
+/**
+ * Returns the Supabase URL from VITE_SUPABASE_URL (.env.example)
+ */
 export const getSupabaseUrl = (): string => {
   const envUrl = getEnvVar('VITE_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL');
   if (envUrl && envUrl.trim().length > 0) {
@@ -45,6 +63,9 @@ export const getSupabaseUrl = (): string => {
   return '';
 };
 
+/**
+ * Returns the Supabase Anonymous / Publishable Key from VITE_SUPABASE_ANON_KEY (.env.example)
+ */
 export const getSupabaseAnonKey = (): string => {
   const envKey =
     getEnvVar('VITE_SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY') ||
@@ -55,16 +76,27 @@ export const getSupabaseAnonKey = (): string => {
   return '';
 };
 
-export const SUPABASE_PROJECT_ID = (() => {
+/**
+ * Returns the Supabase Project ID from VITE_SUPABASE_PROJECT_ID (.env.example) or extracts it from the URL
+ */
+export const getSupabaseProjectId = (): string => {
+  const envProjId = getEnvVar('VITE_SUPABASE_PROJECT_ID');
+  if (envProjId && envProjId.trim().length > 0) {
+    return envProjId.trim();
+  }
   const url = getSupabaseUrl();
   const match = url.match(/https?:\/\/([^.]+)\.supabase\.co/);
   return match ? match[1] : '';
-})();
+};
 
+export const SUPABASE_PROJECT_ID = getSupabaseProjectId();
 export const OFFICIAL_SUPABASE_URL = getSupabaseUrl();
 export const OFFICIAL_SUPABASE_REST_URL = getSupabaseUrl() ? `${getSupabaseUrl()}/rest/v1` : '';
 export const OFFICIAL_SUPABASE_PUBLISHABLE_KEY = getSupabaseAnonKey();
 
+/**
+ * Checks whether Supabase is properly configured with valid credentials
+ */
 export const isSupabaseConfigured = (): boolean => {
   const url = getSupabaseUrl();
   const key = getSupabaseAnonKey();
@@ -79,14 +111,17 @@ export const isSupabaseConfigured = (): boolean => {
   );
 };
 
-// Singleton Supabase Client with persistent session and auto-refresh
+// Singleton Supabase Client instance with persistent session and auto-refresh
 let supabaseInstance: SupabaseClient | null = null;
 
+/**
+ * Returns or initializes the singleton Supabase client
+ */
 export const getSupabase = (): SupabaseClient => {
   if (!supabaseInstance) {
-    const isConfigured = isSupabaseConfigured();
-    const url = isConfigured ? getSupabaseUrl() : FALLBACK_URL;
-    const key = isConfigured ? getSupabaseAnonKey() : FALLBACK_KEY;
+    const configured = isSupabaseConfigured();
+    const url = configured ? getSupabaseUrl() : FALLBACK_URL;
+    const key = configured ? getSupabaseAnonKey() : FALLBACK_KEY;
 
     supabaseInstance = createClient(url, key, {
       auth: {
@@ -101,7 +136,10 @@ export const getSupabase = (): SupabaseClient => {
   return supabaseInstance;
 };
 
-export const supabase = getSupabase();
+/**
+ * The initialized Supabase Client instance ready for consumption
+ */
+export const supabase: SupabaseClient = getSupabase();
 
 /**
  * Checks connectivity to the live Supabase Auth service
@@ -131,4 +169,5 @@ export const checkSupabaseHealth = async (): Promise<{ connected: boolean; versi
   }
 };
 
-
+export { createClient };
+export type { SupabaseClient };
