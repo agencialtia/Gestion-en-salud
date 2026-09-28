@@ -137,9 +137,73 @@ export const getSupabase = (): SupabaseClient => {
 };
 
 /**
- * The initialized Supabase Client instance ready for consumption
+ * Updates credentials in localStorage at runtime and reinitializes the Supabase client
  */
-export const supabase: SupabaseClient = getSupabase();
+export const setCustomSupabaseCredentials = (
+  url: string,
+  key: string,
+  projectId?: string
+): SupabaseClient => {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const cleanUrl = url ? sanitizeSupabaseUrl(url.trim()) : '';
+    const cleanKey = key ? key.trim() : '';
+    const cleanProj = projectId ? projectId.trim() : (cleanUrl.match(/https?:\/\/([^.]+)\.supabase\.co/)?.[1] || '');
+
+    if (cleanUrl) {
+      window.localStorage.setItem('VITE_SUPABASE_URL', cleanUrl);
+      window.localStorage.setItem('CUSTOM_SUPABASE_URL', cleanUrl);
+    } else {
+      window.localStorage.removeItem('VITE_SUPABASE_URL');
+      window.localStorage.removeItem('CUSTOM_SUPABASE_URL');
+    }
+
+    if (cleanKey) {
+      window.localStorage.setItem('VITE_SUPABASE_ANON_KEY', cleanKey);
+      window.localStorage.setItem('CUSTOM_SUPABASE_KEY', cleanKey);
+    } else {
+      window.localStorage.removeItem('VITE_SUPABASE_ANON_KEY');
+      window.localStorage.removeItem('CUSTOM_SUPABASE_KEY');
+    }
+
+    if (cleanProj) {
+      window.localStorage.setItem('VITE_SUPABASE_PROJECT_ID', cleanProj);
+    } else {
+      window.localStorage.removeItem('VITE_SUPABASE_PROJECT_ID');
+    }
+  }
+
+  // Force re-initialization
+  supabaseInstance = null;
+  return getSupabase();
+};
+
+/**
+ * Clears custom credentials and resets client
+ */
+export const resetCustomSupabaseCredentials = (): void => {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.removeItem('VITE_SUPABASE_URL');
+    window.localStorage.removeItem('CUSTOM_SUPABASE_URL');
+    window.localStorage.removeItem('VITE_SUPABASE_ANON_KEY');
+    window.localStorage.removeItem('CUSTOM_SUPABASE_KEY');
+    window.localStorage.removeItem('VITE_SUPABASE_PROJECT_ID');
+  }
+  supabaseInstance = null;
+};
+
+/**
+ * The initialized Supabase Client proxy - always routes to the active client instance
+ */
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const client = getSupabase();
+    const val = (client as any)[prop];
+    if (typeof val === 'function') {
+      return val.bind(client);
+    }
+    return val;
+  },
+});
 
 /**
  * Checks connectivity to the live Supabase Auth service

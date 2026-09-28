@@ -1569,7 +1569,7 @@ export const EntityDrawer: React.FC<{
             <div className="flex items-center justify-stretch sm:justify-end gap-2">
               <button
                 type="button"
-                onClick={handleSaveIndicator}
+                onClick={() => handleSaveIndicator(false)}
                 className="flex-1 sm:flex-none px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 active:scale-95 transition-all shadow-sm flex items-center justify-center gap-1.5 min-h-[40px]"
               >
                 <Save className="h-4 w-4" />

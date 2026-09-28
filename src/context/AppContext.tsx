@@ -112,7 +112,10 @@ import {
   getSupabase,
   isSupabaseConfigured,
   getSupabaseUrl,
+  getSupabaseAnonKey,
   getSupabaseProjectId,
+  setCustomSupabaseCredentials,
+  resetCustomSupabaseCredentials,
   type SupabaseClient,
 } from '../lib/supabase';
 import {
@@ -414,6 +417,7 @@ interface AppContextType {
   // Supabase Database Integration
   supabase: SupabaseClient;
   supabaseUrl: string;
+  supabaseAnonKey: string;
   supabaseProjectId: string;
   isSupabaseConnected: boolean;
   supabaseDbStatus: SupabaseDbStatus | null;
@@ -423,6 +427,8 @@ interface AppContextType {
   syncWithSupabase: (direction?: 'pull' | 'push' | 'both') => Promise<void>;
   testSupabaseDatabaseConnection: () => Promise<SupabaseDbStatus>;
   pushAllDataToSupabase: () => Promise<{ success: boolean; insertedCount: number; errors: string[] }>;
+  updateSupabaseCredentials: (url: string, key: string, projectId?: string) => Promise<SupabaseDbStatus>;
+  resetSupabaseCredentials: () => void;
 
   // Utility Actions
   toasts: ToastMessage[];
@@ -430,6 +436,7 @@ interface AppContextType {
   removeToast: (id: string) => void;
   resetAllDataToSeed: () => void;
   exportAllDataJSON: () => void;
+  importAllDataJSON: (data: any) => { success: boolean; message: string; count?: number };
   exportTableCSV: (entityType: string, programFilter?: ProgramId | null) => void;
 }
 
@@ -2591,6 +2598,55 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     budget2025Notes,
   ]);
 
+  const updateSupabaseCredentials = useCallback(
+    async (url: string, key: string, projectId?: string): Promise<SupabaseDbStatus> => {
+      setCustomSupabaseCredentials(url, key, projectId);
+      setSupabaseSyncState('syncing');
+      try {
+        const status = await checkSupabaseDatabaseStatus();
+        setSupabaseDbStatus(status);
+        setIsSupabaseConnected(status.connected);
+        if (status.connected) {
+          setSupabaseSyncState('synced');
+          setSupabaseSyncError(null);
+          showToast('¡Credenciales actualizadas y conexión verificada con éxito!', 'success');
+          // Automatically pull data if available
+          await syncWithSupabase('pull');
+        } else {
+          setSupabaseSyncState('error');
+          setSupabaseSyncError(status.error || 'No se pudo conectar a la base de datos');
+          showToast('Credenciales guardadas, pero fallo de conexión: ' + (status.error || 'revisa URL y Key'), 'warning');
+        }
+        return status;
+      } catch (err: any) {
+        const msg = err?.message || 'Error de conexión';
+        const fallbackStatus: SupabaseDbStatus = {
+          connected: false,
+          projectId: projectId || '',
+          url: url || '',
+          latencyMs: 0,
+          tables: {},
+          totalRows: 0,
+          error: msg,
+          checkedAt: new Date().toISOString(),
+        };
+        setSupabaseDbStatus(fallbackStatus);
+        setSupabaseSyncState('error');
+        setSupabaseSyncError(msg);
+        setIsSupabaseConnected(false);
+        showToast('Error al probar conexión: ' + msg, 'error');
+        return fallbackStatus;
+      }
+    },
+    [syncWithSupabase, showToast]
+  );
+
+  const resetSupabaseCredentials = useCallback(() => {
+    resetCustomSupabaseCredentials();
+    showToast('Credenciales restablecidas a las variables de entorno de .env', 'info');
+    testSupabaseDatabaseConnection();
+  }, [showToast, testSupabaseDatabaseConnection]);
+
   // Initial database sync and real-time subscription
   useEffect(() => {
     let isMounted = true;
@@ -3822,8 +3878,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
     logAudit('Indicador', id, 'editar', `Indicador ${id} actualizado`);
     showToast('Indicador actualizado y semáforos recalculados', 'info');
-    if (isSupabaseConfigured() && isSupabaseConnected) {
-      upsertIndicatorInSupabase(updatedInd).catch((err) => console.warn('Supabase update indicator error:', err));
+    if (isSupabaseConfigured()) {
+      upsertIndicatorInSupabase(updatedInd)
+        .then(() => {
+          setIsSupabaseConnected(true);
+          setSupabaseSyncError(null);
+        })
+        .catch((err) => {
+          console.warn('Supabase update indicator error:', err);
+          setIsSupabaseConnected(false);
+          setSupabaseSyncError(err?.message || 'Error al conectar con Supabase');
+        });
     }
   };
 
@@ -3858,8 +3923,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
     logAudit('Indicador', indicatorId, 'editar', `Medición registrada para período ${period}: ${result}`);
     showToast('Nueva medición registrada exitosamente', 'success');
-    if (isSupabaseConfigured() && isSupabaseConnected) {
-      upsertIndicatorInSupabase(updatedInd).catch((err) => console.warn('Supabase update measurement error:', err));
+    if (isSupabaseConfigured()) {
+      upsertIndicatorInSupabase(updatedInd)
+        .then(() => {
+          setIsSupabaseConnected(true);
+          setSupabaseSyncError(null);
+        })
+        .catch((err) => {
+          console.warn('Supabase update measurement error:', err);
+          setIsSupabaseConnected(false);
+          setSupabaseSyncError(err?.message || 'Error al conectar con Supabase');
+        });
     }
   };
 
@@ -5862,8 +5936,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       version: '1.0',
       exportDate: new Date().toISOString(),
       exportedBy: currentUser.name,
-      programs: HEALTH_PROGRAMS,
-      establishments: ESTABLISHMENTS,
+      programs,
+      establishments,
       thresholds,
       hrRecords,
       indicators,
@@ -5890,6 +5964,68 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     downloadAnchor.remove();
     showToast('Respaldo JSON descargado', 'success');
   };
+
+  const importAllDataJSON = useCallback((data: any): { success: boolean; message: string; count?: number } => {
+    try {
+      if (!data || typeof data !== 'object') {
+        throw new Error('Archivo de respaldo no contiene un JSON válido.');
+      }
+      let count = 0;
+      if (Array.isArray(data.programs) && data.programs.length > 0) {
+        setPrograms(data.programs);
+        count += data.programs.length;
+      }
+      if (Array.isArray(data.tasks) && data.tasks.length > 0) {
+        setTasks(data.tasks);
+        count += data.tasks.length;
+      }
+      if (Array.isArray(data.indicators) && data.indicators.length > 0) {
+        setIndicators(data.indicators);
+        count += data.indicators.length;
+      }
+      if (Array.isArray(data.purchases) && data.purchases.length > 0) {
+        setPurchases(data.purchases);
+        count += data.purchases.length;
+      }
+      if (Array.isArray(data.meetings) && data.meetings.length > 0) {
+        setMeetings(data.meetings);
+        count += data.meetings.length;
+      }
+      if (Array.isArray(data.contacts) && data.contacts.length > 0) {
+        setContacts(data.contacts);
+        count += data.contacts.length;
+      }
+      if (Array.isArray(data.questions) && data.questions.length > 0) {
+        setQuestions(data.questions);
+        count += data.questions.length;
+      }
+      if (Array.isArray(data.establishments) && data.establishments.length > 0) {
+        setEstablishments(data.establishments);
+        count += data.establishments.length;
+      }
+      if (Array.isArray(data.financialPeriods) && data.financialPeriods.length > 0) {
+        setFinancialPeriods(data.financialPeriods);
+        count += data.financialPeriods.length;
+      }
+      if (Array.isArray(data.budgetComponents) && data.budgetComponents.length > 0) {
+        setBudgetComponents(data.budgetComponents);
+        count += data.budgetComponents.length;
+      }
+      if (Array.isArray(data.emails) && data.emails.length > 0) {
+        setEmails(data.emails);
+        count += data.emails.length;
+      }
+      if (Array.isArray(data.documents) && data.documents.length > 0) {
+        setDocuments(data.documents);
+        count += data.documents.length;
+      }
+      showToast(`Respaldo importado exitosamente (${count} registros)`, 'success');
+      return { success: true, message: `Respaldo importado con éxito (${count} registros)`, count };
+    } catch (err: any) {
+      showToast(`Error al importar respaldo: ${err?.message || 'Formato desconocido'}`, 'error');
+      return { success: false, message: err?.message || 'Error al importar archivo' };
+    }
+  }, [showToast]);
 
   const exportTableCSV = (entityType: string, programFilter?: ProgramId | null) => {
     let rows: string[][] = [];
@@ -6190,6 +6326,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         exportTaskToGoogleCalendar,
         supabase,
         supabaseUrl: getSupabaseUrl(),
+        supabaseAnonKey: getSupabaseAnonKey(),
         supabaseProjectId: getSupabaseProjectId(),
         isSupabaseConnected,
         supabaseDbStatus,
@@ -6199,11 +6336,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         syncWithSupabase,
         testSupabaseDatabaseConnection,
         pushAllDataToSupabase: handlePushAllDataToSupabase,
+        updateSupabaseCredentials,
+        resetSupabaseCredentials,
         toasts,
         showToast,
         removeToast,
         resetAllDataToSeed,
         exportAllDataJSON,
+        importAllDataJSON,
         exportTableCSV,
       }}
     >

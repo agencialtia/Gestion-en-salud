@@ -13,8 +13,12 @@ import {
   LogOut,
   Building2,
   Check,
+  Cloud,
+  CloudOff,
+  Database,
 } from 'lucide-react';
 import { LANGUAGE_OPTIONS, LanguageOption, Language } from '../../i18n/translations';
+import { SupabaseSyncModal } from './SupabaseSyncModal';
 
 export const Header: React.FC<{
   onOpenQuickCreate: () => void;
@@ -32,6 +36,8 @@ export const Header: React.FC<{
     setLanguage,
     t,
     setActiveView,
+    isSupabaseConnected,
+    supabaseSyncState,
   } = useApp();
 
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -39,6 +45,8 @@ export const Header: React.FC<{
 
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const languageMenuRef = useRef<HTMLDivElement>(null);
+
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -112,6 +120,34 @@ export const Header: React.FC<{
 
       {/* Right: Language, Dark mode, User Avatar Profile */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Supabase Cloud Connection Status & Sync Trigger */}
+        <button
+          id="btn-supabase-status"
+          type="button"
+          onClick={() => setIsSupabaseModalOpen(true)}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+            isSupabaseConnected
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/80 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-100/70'
+              : supabaseSyncState === 'syncing'
+              ? 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800/80 dark:bg-blue-950/40 dark:text-blue-300 animate-pulse'
+              : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/80 dark:bg-amber-950/40 dark:text-amber-300 hover:bg-amber-100/70'
+          }`}
+          title={
+            isSupabaseConnected
+              ? 'Base de Datos Supabase Conectada (Click para sincronizar o configurar)'
+              : 'Supabase no conectado (Click para configurar credenciales o sincronizar)'
+          }
+        >
+          {isSupabaseConnected ? (
+            <Cloud className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          ) : (
+            <CloudOff className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+          )}
+          <span className="hidden md:inline text-[11px]">
+            {isSupabaseConnected ? 'Cloud Conectado' : 'Supabase'}
+          </span>
+        </button>
+
         {/* Interactive Language selector: ES / PT / EN 🌐 with dropdown */}
         <div className="relative" ref={languageMenuRef}>
           <button
@@ -244,6 +280,12 @@ export const Header: React.FC<{
           )}
         </div>
       </div>
+
+      {/* Supabase Cloud Connection & Sync Modal */}
+      <SupabaseSyncModal
+        isOpen={isSupabaseModalOpen}
+        onClose={() => setIsSupabaseModalOpen(false)}
+      />
     </header>
   );
 };
