@@ -96,6 +96,73 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
     return 'pendiente';
   }, [task, email]);
 
+  // Checklist items mapping (must be declared at top level)
+  const checklistItems = useMemo(() => {
+    if (task) {
+      return (task.checklist || []).map((item: any, idx: number) => ({
+        id: item.id || `chk-${idx}`,
+        text: item.description || item.text || '',
+        completed: Boolean(item.isCompleted || item.completed),
+      }));
+    }
+    if (email) {
+      return (email.checklist || []).map((item: any, idx: number) => ({
+        id: item.id || `chk-em-${idx}`,
+        text: item.description || item.text || '',
+        completed: Boolean(item.isCompleted || item.completed),
+      }));
+    }
+    return [];
+  }, [task, email]);
+
+  // Comments / Audit timeline (must be declared at top level)
+  const comments = useMemo(() => {
+    const list: any[] = [];
+    if (task) {
+      if (Array.isArray(task.comments)) {
+        list.push(...task.comments);
+      }
+      if (Array.isArray(task.history)) {
+        task.history.forEach((h: any) => {
+          list.push({
+            id: h.id || `hist-${h.date}`,
+            author: h.user || 'Klaus Bauer',
+            text: `${h.action ? `[${h.action.toUpperCase()}]: ` : ''}${h.details || ''}`,
+            date: h.date || '',
+            isAudit: true,
+          });
+        });
+      } else if (Array.isArray(task.auditTrail)) {
+        task.auditTrail.forEach((aud: any) => {
+          list.push({
+            id: aud.id || `aud-${aud.date}`,
+            author: aud.user || 'Sistema',
+            text: `${aud.action ? aud.action + ': ' : ''}${aud.details || ''}`,
+            date: aud.date || '',
+            isAudit: true,
+          });
+        });
+      }
+    }
+    if (email) {
+      if (Array.isArray(email.comments)) {
+        list.push(...email.comments);
+      }
+      if (Array.isArray(email.followUps)) {
+        email.followUps.forEach((fu: any) => {
+          list.push({
+            id: fu.id || `fu-${fu.date}`,
+            author: fu.user || 'Sistema',
+            text: `[${fu.type?.toUpperCase() || 'SEGUIMIENTO'}]: ${fu.note || ''}`,
+            date: fu.date || '',
+            isAudit: true,
+          });
+        });
+      }
+    }
+    return list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }, [task, email]);
+
   // Local editing states
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
@@ -134,8 +201,6 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
-
-  if (!isOpen || (!task && !email)) return null;
 
   // Title save
   const handleSaveTitle = () => {
@@ -197,25 +262,6 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
       updateEmail(email.id!, { dueDate: dateStr, deadline: dateStr }, true);
     }
   };
-
-  // Checklist items mapping
-  const checklistItems = useMemo(() => {
-    if (task) {
-      return (task.checklist || []).map((item: any, idx: number) => ({
-        id: item.id || `chk-${idx}`,
-        text: item.description || item.text || '',
-        completed: Boolean(item.isCompleted || item.completed),
-      }));
-    }
-    if (email) {
-      return (email.checklist || []).map((item: any, idx: number) => ({
-        id: item.id || `chk-em-${idx}`,
-        text: item.description || item.text || '',
-        completed: Boolean(item.isCompleted || item.completed),
-      }));
-    }
-    return [];
-  }, [task, email]);
 
   const checklistTotal = checklistItems.length;
   const checklistCompleted = checklistItems.filter((i) => i.completed).length;
@@ -283,54 +329,6 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
     }
   };
 
-  // Comments / Audit timeline
-  const comments = useMemo(() => {
-    const list: any[] = [];
-    if (task) {
-      if (Array.isArray(task.comments)) {
-        list.push(...task.comments);
-      }
-      if (Array.isArray(task.history)) {
-        task.history.forEach((h: any) => {
-          list.push({
-            id: h.id || `hist-${h.date}`,
-            author: h.user || 'Klaus Bauer',
-            text: `${h.action ? `[${h.action.toUpperCase()}]: ` : ''}${h.details || ''}`,
-            date: h.date || '',
-            isAudit: true,
-          });
-        });
-      } else if (Array.isArray(task.auditTrail)) {
-        task.auditTrail.forEach((aud: any) => {
-          list.push({
-            id: aud.id || `aud-${aud.date}`,
-            author: aud.user || 'Sistema',
-            text: `${aud.action ? aud.action + ': ' : ''}${aud.details || ''}`,
-            date: aud.date || '',
-            isAudit: true,
-          });
-        });
-      }
-    }
-    if (email) {
-      if (Array.isArray(email.comments)) {
-        list.push(...email.comments);
-      }
-      if (Array.isArray(email.followUps)) {
-        email.followUps.forEach((fu: any) => {
-          list.push({
-            id: fu.id || `fu-${fu.date}`,
-            author: fu.user || 'Sistema',
-            text: `[${fu.type?.toUpperCase() || 'SEGUIMIENTO'}]: ${fu.note || ''}`,
-            date: fu.date || '',
-            isAudit: true,
-          });
-        });
-      }
-    }
-    return list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  }, [task, email]);
-
   const handleAddComment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCommentText.trim()) return;
@@ -393,6 +391,9 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
       onClose();
     }
   };
+
+  // ALL hooks have run unconditionally above. Now early return if not open or no task/email.
+  if (!isOpen || (!task && !email)) return null;
 
   const dueDate = task?.dueDate || task?.endDate || email?.dueDate || email?.deadline;
   const isOverdue = dueDate && dueDate < new Date().toISOString().split('T')[0] && currentColumn !== 'resuelto';

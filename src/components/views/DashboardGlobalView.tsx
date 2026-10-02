@@ -616,20 +616,22 @@ export const DashboardGlobalView: React.FC<{
       </div>
 
       {/* Trello Card Detailed Modal (Window with all synchronized program info) */}
-      <TrelloCardModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setModalCard(null);
-        }}
-        cardId={modalCard?.id || null}
-        cardType={modalCard?.type || null}
-        onNavigateToProgram={(pId) => {
-          setSelectedProgramId(pId);
-          setActiveView('program_detail');
-        }}
-        onOpenEntity={onOpenEntity}
-      />
+      {isModalOpen && (
+        <TrelloCardModal
+          isOpen={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false);
+            setModalCard(null);
+          }}
+          cardId={modalCard?.id || null}
+          cardType={modalCard?.type || null}
+          onNavigateToProgram={(pId) => {
+            setSelectedProgramId(pId);
+            setActiveView('program_detail');
+          }}
+          onOpenEntity={onOpenEntity}
+        />
+      )}
 
       {/* Quick Add Modal */}
       {isCreateOpen && (
