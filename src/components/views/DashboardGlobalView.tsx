@@ -1,10 +1,9 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ProgramId, PriorityLevel, Task, PendingEmail, HealthProgram } from '../../types';
 import {
   CheckSquare,
   Mail,
-  RefreshCw,
   Plus,
   Filter,
   Search,
@@ -21,13 +20,14 @@ import {
   Sparkles,
   Info,
   X,
-  Send
+  Send,
+  FileText
 } from 'lucide-react';
 import { DrawerEntityType } from '../common/EntityDrawer';
 import { TrelloCardModal } from '../common/TrelloCardModal';
 import { formatDate } from '../../utils/dateUtils';
 
-type ActivityFilterType = 'all' | 'tasks' | 'emails';
+type ActivityFilterType = 'tasks' | 'emails';
 type KanbanColumn = 'pendiente' | 'en_ejecucion' | 'resuelto';
 
 interface KanbanItem {
@@ -43,6 +43,8 @@ interface KanbanItem {
   priority: PriorityLevel;
   dueDate?: string;
   assignee?: string;
+  category?: string;
+  originLabel?: string;
   isOverdue?: boolean;
   checklistCount?: { completed: number; total: number };
   raw: Task | PendingEmail;
@@ -65,18 +67,13 @@ export const DashboardGlobalView: React.FC<{
     addEmail,
     setSelectedProgramId,
     setActiveView,
-    isSupabaseActive,
   } = useApp();
 
-  // Filters & Board state
-  const [activityTypeFilter, setActivityTypeFilter] = useState<ActivityFilterType>('all');
+  // Filters & Board state: ONLY 'tasks' and 'emails'
+  const [activityTypeFilter, setActivityTypeFilter] = useState<ActivityFilterType>('tasks');
   const [selectedProgram, setSelectedProgram] = useState<ProgramId | 'all'>('all');
   const [selectedPriority, setSelectedPriority] = useState<PriorityLevel | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Synchronization status & animation
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSyncTime, setLastSyncTime] = useState<string>('Justo ahora');
 
   // Drag and drop states
   const [draggedItem, setDraggedItem] = useState<{ id: string; type: 'task' | 'email' } | null>(null);
@@ -88,7 +85,6 @@ export const DashboardGlobalView: React.FC<{
 
   // Quick Create Modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [newActivityType, setNewActivityType] = useState<'task' | 'email'>('task');
   const [newActivityTitle, setNewActivityTitle] = useState('');
   const [newActivityProgram, setNewActivityProgram] = useState<string>(programs[0]?.id || 'praps_cpu');
   const [newActivityPriority, setNewActivityPriority] = useState<PriorityLevel>('alta');
@@ -99,7 +95,7 @@ export const DashboardGlobalView: React.FC<{
   // Today reference
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  // Map tasks and emails into unified Kanban items
+  // Map tasks and emails into unified Kanban items (reactively synchronized with all programs)
   const allItems: KanbanItem[] = useMemo(() => {
     const list: KanbanItem[] = [];
 
@@ -127,12 +123,12 @@ export const DashboardGlobalView: React.FC<{
 
       let checklistCount: { completed: number; total: number } | undefined;
       if (Array.isArray(t.checklist) && t.checklist.length > 0) {
-        const completed = t.checklist.filter((i) => i.completed || i.isCompleted).length;
+        const completed = t.checklist.filter((i: any) => i.isCompleted || i.completed).length;
         checklistCount = { completed, total: t.checklist.length };
       }
 
       list.push({
-        id: t.id!,
+        id: String(t.id),
         type: 'task',
         title: t.title || 'Tarea sin título',
         description: t.description,
@@ -143,7 +139,9 @@ export const DashboardGlobalView: React.FC<{
         status: col,
         priority: (t.priority || 'media') as PriorityLevel,
         dueDate: dDate,
-        assignee: t.assignedTo || currentUser?.name || 'Referente',
+        assignee: t.responsible || t.assignedTo || currentUser?.name || 'Referente',
+        category: t.category || t.categoryName,
+        originLabel: t.originLabel || t.origin,
         isOverdue: isOver,
         checklistCount,
         raw: t,
@@ -170,12 +168,12 @@ export const DashboardGlobalView: React.FC<{
 
       let checklistCount: { completed: number; total: number } | undefined;
       if (Array.isArray(em.checklist) && em.checklist.length > 0) {
-        const completed = em.checklist.filter((i: any) => i.completed).length;
+        const completed = em.checklist.filter((i: any) => i.isCompleted || i.completed).length;
         checklistCount = { completed, total: em.checklist.length };
       }
 
       list.push({
-        id: em.id!,
+        id: String(em.id),
         type: 'email',
         title: em.subject || 'Correo sin asunto',
         description: em.body || em.requiredAction || (em.sender ? `De: ${em.sender}` : ''),
@@ -187,6 +185,7 @@ export const DashboardGlobalView: React.FC<{
         priority: (em.priority || 'media') as PriorityLevel,
         dueDate: dDate,
         assignee: em.responsible || currentUser?.name || 'Referente',
+        category: em.type,
         isOverdue: isOver,
         checklistCount,
         raw: em,
@@ -199,7 +198,7 @@ export const DashboardGlobalView: React.FC<{
   // Filter items based on active controls
   const filteredItems = useMemo(() => {
     return allItems.filter((item) => {
-      // Activity type filter
+      // Activity type filter: ONLY tasks OR emails
       if (activityTypeFilter === 'tasks' && item.type !== 'task') return false;
       if (activityTypeFilter === 'emails' && item.type !== 'email') return false;
 
@@ -228,7 +227,7 @@ export const DashboardGlobalView: React.FC<{
   const columnInProgress = useMemo(() => filteredItems.filter((i) => i.status === 'en_ejecucion'), [filteredItems]);
   const columnResolved = useMemo(() => filteredItems.filter((i) => i.status === 'resuelto'), [filteredItems]);
 
-  // Overall counts for filter tabs
+  // Counts for the 2 filter tabs: Tareas Pendientes and Correos Pendientes
   const totalTasksPending = useMemo(() => {
     return allItems.filter((i) => i.type === 'task' && i.status !== 'resuelto').length;
   }, [allItems]);
@@ -281,18 +280,7 @@ export const DashboardGlobalView: React.FC<{
     }
   };
 
-  // Synchronize button action
-  const handleSyncPrograms = useCallback(() => {
-    setIsSyncing(true);
-    setTimeout(() => {
-      setIsSyncing(false);
-      const now = new Date();
-      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      setLastSyncTime(timeStr);
-    }, 700);
-  }, []);
-
-  // Card click handler -> Opens Trello modal
+  // Card click handler -> Opens detailed information window synchronized with the program
   const handleOpenCard = (id: string, type: 'task' | 'email') => {
     setModalCard({ id, type });
     setIsModalOpen(true);
@@ -303,7 +291,7 @@ export const DashboardGlobalView: React.FC<{
     e.preventDefault();
     if (!newActivityTitle.trim()) return;
 
-    if (newActivityType === 'task') {
+    if (activityTypeFilter === 'tasks') {
       const taskStatus =
         newActivityColumn === 'resuelto' ? 'completada' : newActivityColumn === 'en_ejecucion' ? 'en_ejecucion' : 'pendiente';
       addTask({
@@ -312,6 +300,7 @@ export const DashboardGlobalView: React.FC<{
         priority: newActivityPriority,
         dueDate: newActivityDueDate,
         assignedTo: newActivityAssignee || currentUser.name,
+        responsible: newActivityAssignee || currentUser.name,
         status: taskStatus,
         description: 'Creado desde el Tablero Trello General.',
       });
@@ -340,7 +329,7 @@ export const DashboardGlobalView: React.FC<{
     <div className="space-y-6 pb-12 animate-in fade-in duration-200">
       {/* Top Header & Main Controls */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           {/* Title and subtitle */}
           <div>
             <div className="flex items-center gap-2.5">
@@ -352,81 +341,54 @@ export const DashboardGlobalView: React.FC<{
                   Visor General de Programas
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                  Tablero Trello unificado para gestionar y arrastrar tareas y correos sincronizados de todos los programas.
+                  Tablero Trello sincronizado en tiempo real y de forma automática con todos los programas de salud.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Sync Button & New Activity Action */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Sync Button */}
-            <button
-              onClick={handleSyncPrograms}
-              disabled={isSyncing}
-              className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs hover:scale-[1.01]"
-              title="Sincronizar tareas y correos con todos los programas y base de datos"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>Sincronizar con Programas</span>
-              <span className="text-[10px] text-slate-400 font-normal">({lastSyncTime})</span>
-            </button>
-
-            {/* Quick Create Card Button */}
+          {/* Quick Create Card Button */}
+          <div className="flex items-center gap-2.5">
             <button
               onClick={() => setIsCreateOpen(true)}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs hover:shadow-md hover:scale-[1.01]"
             >
               <Plus className="w-4 h-4" />
-              <span>Nueva Actividad</span>
+              <span>{activityTypeFilter === 'tasks' ? 'Nueva Tarea' : 'Nuevo Correo'}</span>
             </button>
           </div>
         </div>
 
-        {/* Filter bar: Segmented Buttons for Tasks & Emails + Program & Priority dropdowns */}
+        {/* Filter bar: ONLY Tareas Pendientes and Correos Pendientes */}
         <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          {/* Segmented Filter Buttons (Requested by user: Botón de tareas pendientes y correos pendientes) */}
+          {/* Segmented Filter Buttons (ONLY "Tareas Pendientes" and "Correos Pendientes") */}
           <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-750 flex-wrap">
             <button
-              onClick={() => setActivityTypeFilter('all')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activityTypeFilter === 'all'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
-              }`}
-            >
-              <span>Todas las Actividades</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold">
-                {allItems.length}
-              </span>
-            </button>
-
-            <button
               onClick={() => setActivityTypeFilter('tasks')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activityTypeFilter === 'tasks'
                   ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400'
               }`}
             >
-              <CheckSquare className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               <span>Tareas Pendientes</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-bold">
+              <span className="px-2 py-0.5 rounded-full text-[11px] bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-bold">
                 {totalTasksPending}
               </span>
             </button>
 
             <button
               onClick={() => setActivityTypeFilter('emails')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activityTypeFilter === 'emails'
                   ? 'bg-white dark:bg-slate-700 text-amber-700 dark:text-amber-300 shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400'
               }`}
             >
-              <Mail className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <Mail className="w-4 h-4 text-amber-600 dark:text-amber-400" />
               <span>Correos Pendientes</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-bold">
+              <span className="px-2 py-0.5 rounded-full text-[11px] bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-bold">
                 {totalEmailsPending}
               </span>
             </button>
@@ -517,6 +479,7 @@ export const DashboardGlobalView: React.FC<{
                   isDragging={draggedItem?.id === item.id}
                   onDragStart={(e) => handleDragStart(e, item.id, item.type)}
                   onClick={() => handleOpenCard(item.id, item.type)}
+                  onOpenEntity={onOpenEntity}
                 />
               ))
             )}
@@ -574,6 +537,7 @@ export const DashboardGlobalView: React.FC<{
                   isDragging={draggedItem?.id === item.id}
                   onDragStart={(e) => handleDragStart(e, item.id, item.type)}
                   onClick={() => handleOpenCard(item.id, item.type)}
+                  onOpenEntity={onOpenEntity}
                 />
               ))
             )}
@@ -631,6 +595,7 @@ export const DashboardGlobalView: React.FC<{
                   isDragging={draggedItem?.id === item.id}
                   onDragStart={(e) => handleDragStart(e, item.id, item.type)}
                   onClick={() => handleOpenCard(item.id, item.type)}
+                  onOpenEntity={onOpenEntity}
                 />
               ))
             )}
@@ -650,7 +615,7 @@ export const DashboardGlobalView: React.FC<{
         </div>
       </div>
 
-      {/* Trello Card Detailed Modal (Window like image 3) */}
+      {/* Trello Card Detailed Modal (Window with all synchronized program info) */}
       <TrelloCardModal
         isOpen={isModalOpen}
         onClose={() => {
@@ -663,6 +628,7 @@ export const DashboardGlobalView: React.FC<{
           setSelectedProgramId(pId);
           setActiveView('program_detail');
         }}
+        onOpenEntity={onOpenEntity}
       />
 
       {/* Quick Add Modal */}
@@ -671,7 +637,7 @@ export const DashboardGlobalView: React.FC<{
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                Añadir al Tablero General
+                Añadir {activityTypeFilter === 'tasks' ? 'Tarea' : 'Correo'} al Tablero
               </h3>
               <button
                 onClick={() => setIsCreateOpen(false)}
@@ -682,45 +648,17 @@ export const DashboardGlobalView: React.FC<{
             </div>
 
             <form onSubmit={handleCreateSubmit} className="space-y-4">
-              {/* Type Switcher */}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setNewActivityType('task')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold border cursor-pointer ${
-                    newActivityType === 'task'
-                      ? 'bg-indigo-50 border-indigo-300 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300'
-                      : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-400'
-                  }`}
-                >
-                  <CheckSquare className="w-4 h-4" />
-                  <span>Tarea</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNewActivityType('email')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold border cursor-pointer ${
-                    newActivityType === 'email'
-                      ? 'bg-amber-50 border-amber-300 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300'
-                      : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-400'
-                  }`}
-                >
-                  <Mail className="w-4 h-4" />
-                  <span>Correo</span>
-                </button>
-              </div>
-
               {/* Title / Subject */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  {newActivityType === 'task' ? 'Título de la Tarea' : 'Asunto del Correo'}
+                  {activityTypeFilter === 'tasks' ? 'Título de la Tarea' : 'Asunto del Correo'}
                 </label>
                 <input
                   type="text"
                   value={newActivityTitle}
                   onChange={(e) => setNewActivityTitle(e.target.value)}
                   placeholder={
-                    newActivityType === 'task'
+                    activityTypeFilter === 'tasks'
                       ? 'Ej: Revisión informe trimestral'
                       : 'Ej: Solicitud de insumos médicos CESFAM'
                   }
@@ -824,9 +762,10 @@ interface KanbanCardItemProps {
   isDragging: boolean;
   onDragStart: (e: React.DragEvent) => void;
   onClick: () => void;
+  onOpenEntity?: (type: DrawerEntityType, id: string) => void;
 }
 
-const KanbanCardItem: React.FC<KanbanCardItemProps> = ({ item, isDragging, onDragStart, onClick }) => {
+const KanbanCardItem: React.FC<KanbanCardItemProps> = ({ item, isDragging, onDragStart, onClick, onOpenEntity }) => {
   return (
     <div
       draggable
@@ -835,7 +774,7 @@ const KanbanCardItem: React.FC<KanbanCardItemProps> = ({ item, isDragging, onDra
       className={`group relative bg-white dark:bg-slate-850 border rounded-xl p-3.5 shadow-2xs hover:shadow-md transition-all cursor-grab active:cursor-grabbing space-y-2.5 select-none ${
         isDragging
           ? 'opacity-40 scale-95 border-indigo-400 ring-2 ring-indigo-400/50'
-          : 'border-slate-200/90 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+          : 'border-slate-200/90 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700'
       }`}
     >
       {/* Top Badges Row: Program Tag & Activity Type Tag */}
@@ -863,7 +802,7 @@ const KanbanCardItem: React.FC<KanbanCardItemProps> = ({ item, isDragging, onDra
       </div>
 
       {/* Title */}
-      <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2">
+      <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2 leading-snug">
         {item.title}
       </h3>
 
@@ -874,24 +813,32 @@ const KanbanCardItem: React.FC<KanbanCardItemProps> = ({ item, isDragging, onDra
         </p>
       )}
 
-      {/* Checklist Counter if present */}
-      {item.checklistCount && item.checklistCount.total > 0 && (
-        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/80 px-2 py-1 rounded-md w-fit">
-          <CheckSquare className="w-3 h-3 text-emerald-600" />
-          <span className="font-semibold">
-            {item.checklistCount.completed}/{item.checklistCount.total}
+      {/* Checklist Counter and Origin / Category */}
+      <div className="flex items-center gap-2 flex-wrap text-[11px]">
+        {item.checklistCount && item.checklistCount.total > 0 && (
+          <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md font-semibold">
+            <CheckSquare className="w-3 h-3 text-emerald-600" />
+            <span>
+              {item.checklistCount.completed}/{item.checklistCount.total}
+            </span>
+          </div>
+        )}
+
+        {item.originLabel && (
+          <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 rounded text-[10px] font-bold truncate max-w-[120px]">
+            {item.originLabel}
           </span>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Bottom Metadata: Priority, Assignee & Due Date */}
       <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 text-[11px]">
         {/* Assignee Avatar */}
         <div className="flex items-center gap-1.5 min-w-0" title={`Asignado a: ${item.assignee}`}>
           <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold text-[10px] shrink-0">
-            {(item.assignee || 'U').charAt(0).toUpperCase()}
+            {(item.assignee || 'K').charAt(0).toUpperCase()}
           </div>
-          <span className="truncate text-slate-600 dark:text-slate-300 max-w-[90px]">
+          <span className="truncate text-slate-600 dark:text-slate-300 max-w-[90px] font-medium">
             {item.assignee}
           </span>
         </div>

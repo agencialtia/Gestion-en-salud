@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Task, PendingEmail, PriorityLevel, TaskStatus, HealthProgram } from '../../types';
+import { Task, PendingEmail, PriorityLevel, TaskStatus } from '../../types';
+import { DrawerEntityType } from './EntityDrawer';
 import {
   X,
   CheckSquare,
@@ -20,9 +21,10 @@ import {
   Check,
   Plus,
   Send,
-  Sparkles,
-  Layers,
-  ChevronDown
+  Building2,
+  FileText,
+  Link2,
+  Sparkles
 } from 'lucide-react';
 import { formatDate } from '../../utils/dateUtils';
 
@@ -32,6 +34,7 @@ interface TrelloCardModalProps {
   cardId: string | null;
   cardType: 'task' | 'email' | null;
   onNavigateToProgram?: (programId: string) => void;
+  onOpenEntity?: (type: DrawerEntityType, id: string) => void;
 }
 
 export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
@@ -40,6 +43,7 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
   cardId,
   cardType,
   onNavigateToProgram,
+  onOpenEntity,
 }) => {
   const {
     tasks,
@@ -58,15 +62,15 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
     setActiveView,
   } = useApp();
 
-  // Find the active task or email
+  // Find the active task or email with string equality
   const task = useMemo(() => {
     if (cardType !== 'task' || !cardId) return null;
-    return tasks.find((t) => t.id === cardId) || null;
+    return tasks.find((t) => String(t.id) === String(cardId)) || null;
   }, [tasks, cardId, cardType]);
 
   const email = useMemo(() => {
     if (cardType !== 'email' || !cardId) return null;
-    return emails.find((e) => e.id === cardId) || null;
+    return emails.find((e) => String(e.id) === String(cardId)) || null;
   }, [emails, cardId, cardType]);
 
   const currentProgram = useMemo(() => {
@@ -194,29 +198,20 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
     }
   };
 
-  // Change Assignee
-  const handleChangeAssignee = (name: string) => {
-    if (task) {
-      updateTask(task.id!, { assignedTo: name }, true);
-    } else if (email) {
-      updateEmail(email.id!, { responsible: name }, true);
-    }
-  };
-
-  // Checklist items
+  // Checklist items mapping
   const checklistItems = useMemo(() => {
     if (task) {
-      return (task.checklist || []).map((item, idx) => ({
+      return (task.checklist || []).map((item: any, idx: number) => ({
         id: item.id || `chk-${idx}`,
-        text: item.text || item.description || '',
-        completed: Boolean(item.completed || item.isCompleted),
+        text: item.description || item.text || '',
+        completed: Boolean(item.isCompleted || item.completed),
       }));
     }
     if (email) {
       return (email.checklist || []).map((item: any, idx: number) => ({
         id: item.id || `chk-em-${idx}`,
-        text: item.text || item.description || '',
-        completed: Boolean(item.completed),
+        text: item.description || item.text || '',
+        completed: Boolean(item.isCompleted || item.completed),
       }));
     }
     return [];
@@ -228,10 +223,20 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
 
   const handleToggleCheckItem = (itemId: string, currentVal: boolean) => {
     if (task) {
-      toggleChecklistItem(task.id!, itemId);
+      if (Array.isArray(task.checklist)) {
+        const updated = task.checklist.map((item: any) => {
+          if (item.id === itemId) {
+            return { ...item, isCompleted: !currentVal, completed: !currentVal };
+          }
+          return item;
+        });
+        updateTask(task.id!, { checklist: updated }, true);
+      } else {
+        toggleChecklistItem(task.id!, itemId);
+      }
     } else if (email) {
       const updated = (email.checklist || []).map((item: any) =>
-        item.id === itemId ? { ...item, completed: !currentVal } : item
+        item.id === itemId ? { ...item, completed: !currentVal, isCompleted: !currentVal } : item
       );
       updateEmail(email.id!, { checklist: updated }, true);
     }
@@ -241,11 +246,21 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
     e.preventDefault();
     if (!newChecklistText.trim()) return;
     if (task) {
-      addChecklistItem(task.id!, newChecklistText.trim());
+      const newItem = {
+        id: `chk_${Date.now()}`,
+        description: newChecklistText.trim(),
+        text: newChecklistText.trim(),
+        isCompleted: false,
+        completed: false,
+      };
+      const existing = Array.isArray(task.checklist) ? task.checklist : [];
+      updateTask(task.id!, { checklist: [...existing, newItem] }, true);
     } else if (email) {
       const newItem = {
-        id: `chk-${Date.now()}`,
+        id: `chk_${Date.now()}`,
+        description: newChecklistText.trim(),
         text: newChecklistText.trim(),
+        isCompleted: false,
         completed: false,
       };
       const existing = Array.isArray(email.checklist) ? email.checklist : [];
@@ -256,7 +271,12 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
 
   const handleRemoveCheckItem = (itemId: string) => {
     if (task) {
-      removeChecklistItem(task.id!, itemId);
+      if (Array.isArray(task.checklist)) {
+        const updated = task.checklist.filter((item: any) => item.id !== itemId);
+        updateTask(task.id!, { checklist: updated }, true);
+      } else {
+        removeChecklistItem(task.id!, itemId);
+      }
     } else if (email) {
       const updated = (email.checklist || []).filter((item: any) => item.id !== itemId);
       updateEmail(email.id!, { checklist: updated }, true);
@@ -265,10 +285,23 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
 
   // Comments / Audit timeline
   const comments = useMemo(() => {
+    const list: any[] = [];
     if (task) {
-      const list = Array.isArray(task.comments) ? [...task.comments] : [];
-      if (Array.isArray(task.auditTrail)) {
-        task.auditTrail.forEach((aud) => {
+      if (Array.isArray(task.comments)) {
+        list.push(...task.comments);
+      }
+      if (Array.isArray(task.history)) {
+        task.history.forEach((h: any) => {
+          list.push({
+            id: h.id || `hist-${h.date}`,
+            author: h.user || 'Klaus Bauer',
+            text: `${h.action ? `[${h.action.toUpperCase()}]: ` : ''}${h.details || ''}`,
+            date: h.date || '',
+            isAudit: true,
+          });
+        });
+      } else if (Array.isArray(task.auditTrail)) {
+        task.auditTrail.forEach((aud: any) => {
           list.push({
             id: aud.id || `aud-${aud.date}`,
             author: aud.user || 'Sistema',
@@ -278,12 +311,13 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
           });
         });
       }
-      return list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     }
     if (email) {
-      const list = Array.isArray(email.comments) ? [...email.comments] : [];
+      if (Array.isArray(email.comments)) {
+        list.push(...email.comments);
+      }
       if (Array.isArray(email.followUps)) {
-        email.followUps.forEach((fu) => {
+        email.followUps.forEach((fu: any) => {
           list.push({
             id: fu.id || `fu-${fu.date}`,
             author: fu.user || 'Sistema',
@@ -293,9 +327,8 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
           });
         });
       }
-      return list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     }
-    return [];
+    return list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [task, email]);
 
   const handleAddComment = (e: React.FormEvent) => {
@@ -303,8 +336,8 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
     if (!newCommentText.trim()) return;
 
     const newEntry = {
-      id: `comm-${Date.now()}`,
-      author: currentUser?.name || 'Usuario',
+      id: `comm_${Date.now()}`,
+      author: currentUser?.name || 'Klaus Bauer',
       text: newCommentText.trim(),
       date: new Date().toISOString(),
     };
@@ -353,10 +386,20 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
     }
   };
 
+  // Open Full Entity Drawer
+  const handleOpenFullEntity = () => {
+    if (onOpenEntity && cardType && cardId) {
+      onOpenEntity(cardType, cardId);
+      onClose();
+    }
+  };
+
   const dueDate = task?.dueDate || task?.endDate || email?.dueDate || email?.deadline;
   const isOverdue = dueDate && dueDate < new Date().toISOString().split('T')[0] && currentColumn !== 'resuelto';
   const priority = (task?.priority || email?.priority || 'media') as PriorityLevel;
-  const assignee = task?.assignedTo || email?.responsible || currentUser.name;
+  const assignee = task?.responsible || task?.assignedTo || email?.responsible || currentUser.name || 'Referente';
+  const category = task?.category || task?.categoryName || email?.type;
+  const originLabel = task?.originLabel || task?.origin;
 
   return (
     <div
@@ -413,19 +456,20 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
               ) : (
                 <h2
                   onClick={() => setIsEditingTitle(true)}
-                  className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 truncate hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors"
+                  className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors leading-snug"
                   title="Click para editar el título"
                 >
                   {cardType === 'task' ? task?.title : email?.subject}
                 </h2>
               )}
 
-              <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
+              {/* Subheader: List, Program tag, Category, Origin */}
+              <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
                 <span>en la lista</span>
                 <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
-                  {currentColumn === 'pendiente' && '⏳ Pendiente'}
-                  {currentColumn === 'en_ejecucion' && '⚡ En ejecución'}
-                  {currentColumn === 'resuelto' && '✅ Resuelto'}
+                  {currentColumn === 'pendiente' && '⏳ 1. Pendiente'}
+                  {currentColumn === 'en_ejecucion' && '⚡ 2. En ejecución'}
+                  {currentColumn === 'resuelto' && '✅ 3. Resuelto'}
                 </span>
 
                 {currentProgram && (
@@ -435,24 +479,55 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
                       onClick={handleGoToProgram}
                       className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-md text-xs hover:opacity-85 transition-opacity cursor-pointer text-white shadow-2xs"
                       style={{ backgroundColor: currentProgram.color || '#3b82f6' }}
-                      title="Ver programa en detalle"
+                      title={`Ver programa ${currentProgram.name}`}
                     >
-                      {currentProgram.shortName || currentProgram.code || currentProgram.name}
+                      <span>{currentProgram.shortName || currentProgram.code}</span>
                       <ExternalLink className="w-3 h-3 ml-0.5 opacity-80" />
                     </button>
+                  </>
+                )}
+
+                {category && (
+                  <>
+                    <span>•</span>
+                    <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md text-[11px] font-medium border border-slate-200 dark:border-slate-700">
+                      {category}
+                    </span>
+                  </>
+                )}
+
+                {originLabel && (
+                  <>
+                    <span>•</span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 rounded-md text-[11px] font-bold border border-blue-200 dark:border-blue-800">
+                      <Link2 className="w-3 h-3" />
+                      {originLabel}
+                    </span>
                   </>
                 )}
               </div>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-            aria-label="Cerrar ventana"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {onOpenEntity && (
+              <button
+                onClick={handleOpenFullEntity}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                title="Abrir la ficha lateral completa del registro"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Ver Ficha Completa</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              aria-label="Cerrar ventana"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Scrollable Body */}
@@ -461,26 +536,33 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
             {/* Left Column (Content, Description, Checklist, Activity) - 8 cols */}
             <div className="lg:col-span-8 space-y-6">
               {/* Badges / Key Metadata Grid */}
-              <div className="flex flex-wrap gap-4 p-3.5 bg-white dark:bg-slate-850 rounded-xl border border-slate-200 dark:border-slate-800">
-                {/* Miembros / Responsable */}
+              <div className="flex flex-wrap gap-4 p-4 bg-white dark:bg-slate-850 rounded-xl border border-slate-200 dark:border-slate-800">
+                {/* Miembros / Responsable Sincronizado */}
                 <div>
                   <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">
-                    Miembro
+                    Responsable
                   </span>
                   <div className="flex items-center gap-1.5">
                     <div className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
                       {assignee.charAt(0).toUpperCase()}
                     </div>
-                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                      {assignee}
-                    </span>
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                        {assignee}
+                      </span>
+                      {currentProgram?.referente && (
+                        <span className="block text-[10px] text-slate-400">
+                          {currentProgram.referente}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Programa */}
+                {/* Programa Asociado */}
                 <div>
                   <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">
-                    Programa
+                    Programa de Salud
                   </span>
                   <select
                     value={task?.programId || email?.programId || ''}
@@ -532,13 +614,13 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
                       onChange={(e) => handleChangeDueDate(e.target.value)}
                       className={`text-xs font-semibold rounded-lg px-2.5 py-1 border cursor-pointer focus:outline-none ${
                         isOverdue
-                          ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
+                          ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800 font-bold'
                           : 'bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700'
                       }`}
                     />
                     {isOverdue && (
-                      <span className="text-[10px] font-bold bg-rose-600 text-white px-1.5 py-0.5 rounded-sm">
-                        VENCIDO
+                      <span className="text-[10px] font-black bg-rose-600 text-white px-1.5 py-0.5 rounded-sm">
+                        VENCIDA
                       </span>
                     )}
                   </div>
@@ -570,7 +652,7 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
                       value={editedDesc}
                       onChange={(e) => setEditedDesc(e.target.value)}
                       rows={4}
-                      placeholder="Escribe detalles, antecedentes o especificaciones..."
+                      placeholder="Escribe detalles, antecedentes o especificaciones sincronizadas..."
                       className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl p-3 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
                     />
                     <div className="flex items-center gap-2">
@@ -594,7 +676,7 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
                 ) : (
                   <div
                     onClick={() => setIsEditingDesc(true)}
-                    className="min-h-16 p-3 bg-slate-50/70 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-750 text-xs sm:text-sm text-slate-600 dark:text-slate-300 cursor-pointer hover:bg-slate-100/70 dark:hover:bg-slate-800 transition-colors whitespace-pre-wrap"
+                    className="min-h-16 p-3.5 bg-slate-50/70 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-750 text-xs sm:text-sm text-slate-700 dark:text-slate-300 cursor-pointer hover:bg-slate-100/70 dark:hover:bg-slate-800 transition-colors whitespace-pre-wrap leading-relaxed"
                   >
                     {editedDesc || (
                       <span className="text-slate-400 italic">
@@ -604,18 +686,28 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
                   </div>
                 )}
 
+                {/* Additional Program Notes if any */}
+                {task?.notes && (
+                  <div className="p-3 bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-xl text-xs space-y-1">
+                    <span className="font-bold text-amber-900 dark:text-amber-200 block">
+                      📌 Nota técnica del programa:
+                    </span>
+                    <p className="text-amber-800 dark:text-amber-300">{task.notes}</p>
+                  </div>
+                )}
+
                 {/* Email specific details if email */}
                 {cardType === 'email' && email && (
                   <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-slate-400 font-medium">De:</span>{' '}
-                      <span className="font-semibold text-slate-700 dark:text-slate-200">
+                      <span className="text-slate-400 font-medium">De / Remitente:</span>{' '}
+                      <span className="font-semibold text-slate-700 dark:text-slate-200 block">
                         {email.sender || email.from || 'Sin remitente'}
                       </span>
                     </div>
                     <div>
-                      <span className="text-slate-400 font-medium">Para:</span>{' '}
-                      <span className="font-semibold text-slate-700 dark:text-slate-200">
+                      <span className="text-slate-400 font-medium">Para / Destinatario:</span>{' '}
+                      <span className="font-semibold text-slate-700 dark:text-slate-200 block">
                         {email.recipient || email.to || 'Salud Quilicura'}
                       </span>
                     </div>
@@ -629,7 +721,7 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
                   <div className="flex items-center gap-2">
                     <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                      Lista de verificación
+                      Lista de verificación / Subtareas
                     </h3>
                   </div>
                   <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
@@ -667,7 +759,7 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
                         />
                         <span
                           className={`text-xs sm:text-sm text-slate-700 dark:text-slate-200 break-words ${
-                            item.completed ? 'line-through text-slate-400 dark:text-slate-500' : ''
+                            item.completed ? 'line-through text-slate-400 dark:text-slate-500' : 'font-medium'
                           }`}
                         >
                           {item.text}
@@ -708,14 +800,14 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
                 <div className="flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                   <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    Actividad y Comentarios
+                    Historial de Actividad y Comentarios
                   </h3>
                 </div>
 
                 {/* Add comment box */}
                 <form onSubmit={handleAddComment} className="flex gap-3 items-start">
                   <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
-                    {currentUser?.name?.charAt(0) || 'U'}
+                    {currentUser?.name?.charAt(0) || 'K'}
                   </div>
                   <div className="flex-1 space-y-2">
                     <textarea
@@ -742,7 +834,7 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
                 <div className="space-y-3 pt-2">
                   {comments.length === 0 ? (
                     <p className="text-xs text-slate-400 text-center py-2">
-                      Sin comentarios aún. Agrega el primero para registrar acuerdos o notas.
+                      Sin comentarios aún. Agrega una nota o registro de avance.
                     </p>
                   ) : (
                     comments.map((c: any) => (
@@ -844,6 +936,16 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
                   <ExternalLink className="w-3.5 h-3.5" />
                   Ver en el Programa
                 </button>
+
+                {onOpenEntity && (
+                  <button
+                    onClick={handleOpenFullEntity}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Abrir Ficha Completa
+                  </button>
+                )}
               </div>
 
               {/* Eliminar Tarjeta */}
