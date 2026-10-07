@@ -3496,17 +3496,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       createdBy: currentUser.name,
       updatedAt: nowIso,
       completedAt: isCompleted ? nowIso : undefined,
-      completedBy: isCompleted ? currentUser.name : undefined,
-      history: [
-        {
-          id: `aud_${Date.now()}_1`,
-          taskId: id,
-          user: currentUser.name,
-          date: nowIso,
-          action: 'crear',
-          details: `Tarea creada: "${taskData.title}" (${normalizedStatus})`,
-        },
-      ],
+      history:
+        taskData.history !== undefined
+          ? taskData.history
+          : [
+              {
+                id: `aud_${Date.now()}_1`,
+                taskId: id,
+                user: currentUser.name,
+                date: nowIso,
+                action: 'crear',
+                details: `Tarea creada: "${taskData.title}" (${normalizedStatus})`,
+              },
+            ],
+      comments: taskData.comments || [],
     };
 
     setTasks((prev) => [newTask, ...prev]);

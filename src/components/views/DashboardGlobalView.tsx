@@ -91,6 +91,7 @@ export const DashboardGlobalView: React.FC<{
   const [newActivityDueDate, setNewActivityDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [newActivityAssignee, setNewActivityAssignee] = useState(currentUser?.name || '');
   const [newActivityColumn, setNewActivityColumn] = useState<KanbanColumn>('pendiente');
+  const [newActivityComment, setNewActivityComment] = useState('');
 
   // Today reference
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -291,6 +292,17 @@ export const DashboardGlobalView: React.FC<{
     e.preventDefault();
     if (!newActivityTitle.trim()) return;
 
+    const initialComments = newActivityComment.trim()
+      ? [
+          {
+            id: `comm_${Date.now()}`,
+            author: currentUser?.name || 'Referente',
+            text: newActivityComment.trim(),
+            date: new Date().toISOString(),
+          },
+        ]
+      : [];
+
     if (activityTypeFilter === 'tasks') {
       const taskStatus =
         newActivityColumn === 'resuelto' ? 'completada' : newActivityColumn === 'en_ejecucion' ? 'en_ejecucion' : 'pendiente';
@@ -303,6 +315,8 @@ export const DashboardGlobalView: React.FC<{
         responsible: newActivityAssignee || currentUser.name,
         status: taskStatus,
         description: 'Creado desde el Tablero Trello General.',
+        history: [], // Historial eliminado al crear nueva tarea
+        comments: initialComments, // Posibilidad de dejar comentarios
       });
     } else {
       const emailStatus =
@@ -318,10 +332,13 @@ export const DashboardGlobalView: React.FC<{
         body: 'Correo agregado desde el Tablero Trello General.',
         sender: 'Referente Comunal',
         recipient: 'Equipo del Programa',
+        history: [],
+        comments: initialComments,
       });
     }
 
     setNewActivityTitle('');
+    setNewActivityComment('');
     setIsCreateOpen(false);
   };
 
@@ -732,6 +749,25 @@ export const DashboardGlobalView: React.FC<{
                     className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2 text-slate-800 dark:text-slate-200"
                   />
                 </div>
+              </div>
+
+              {/* Comentarios (posibilidad de dejar comentarios al agregar la tarea) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                  <span>Comentarios</span>
+                  <span className="text-[11px] font-normal text-slate-400">Opcional</span>
+                </label>
+                <textarea
+                  value={newActivityComment}
+                  onChange={(e) => setNewActivityComment(e.target.value)}
+                  rows={2}
+                  placeholder={
+                    activityTypeFilter === 'tasks'
+                      ? 'Escribe un comentario inicial para esta tarea...'
+                      : 'Escribe un comentario inicial para este correo...'
+                  }
+                  className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+                />
               </div>
 
               {/* Action Buttons */}

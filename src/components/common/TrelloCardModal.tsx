@@ -115,50 +115,14 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
     return [];
   }, [task, email]);
 
-  // Comments / Audit timeline (must be declared at top level)
+  // Comments list (without automated audit history)
   const comments = useMemo(() => {
     const list: any[] = [];
-    if (task) {
-      if (Array.isArray(task.comments)) {
-        list.push(...task.comments);
-      }
-      if (Array.isArray(task.history)) {
-        task.history.forEach((h: any) => {
-          list.push({
-            id: h.id || `hist-${h.date}`,
-            author: h.user || 'Klaus Bauer',
-            text: `${h.action ? `[${h.action.toUpperCase()}]: ` : ''}${h.details || ''}`,
-            date: h.date || '',
-            isAudit: true,
-          });
-        });
-      } else if (Array.isArray(task.auditTrail)) {
-        task.auditTrail.forEach((aud: any) => {
-          list.push({
-            id: aud.id || `aud-${aud.date}`,
-            author: aud.user || 'Sistema',
-            text: `${aud.action ? aud.action + ': ' : ''}${aud.details || ''}`,
-            date: aud.date || '',
-            isAudit: true,
-          });
-        });
-      }
+    if (task && Array.isArray(task.comments)) {
+      list.push(...task.comments);
     }
-    if (email) {
-      if (Array.isArray(email.comments)) {
-        list.push(...email.comments);
-      }
-      if (Array.isArray(email.followUps)) {
-        email.followUps.forEach((fu: any) => {
-          list.push({
-            id: fu.id || `fu-${fu.date}`,
-            author: fu.user || 'Sistema',
-            text: `[${fu.type?.toUpperCase() || 'SEGUIMIENTO'}]: ${fu.note || ''}`,
-            date: fu.date || '',
-            isAudit: true,
-          });
-        });
-      }
+    if (email && Array.isArray(email.comments)) {
+      list.push(...email.comments);
     }
     return list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [task, email]);
@@ -796,12 +760,12 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
                 </div>
               </div>
 
-              {/* Activity & Comments Section */}
+              {/* Comments Section (posibilidad de dejar comentarios sin historial) */}
               <div className="bg-white dark:bg-slate-850 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                   <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    Historial de Actividad y Comentarios
+                    Comentarios
                   </h3>
                 </div>
 
@@ -835,19 +799,15 @@ export const TrelloCardModal: React.FC<TrelloCardModalProps> = ({
                 <div className="space-y-3 pt-2">
                   {comments.length === 0 ? (
                     <p className="text-xs text-slate-400 text-center py-2">
-                      Sin comentarios aún. Agrega una nota o registro de avance.
+                      Sin comentarios aún. Escribe una observación o comentario arriba.
                     </p>
                   ) : (
                     comments.map((c: any) => (
                       <div
                         key={c.id}
-                        className={`flex gap-3 text-xs p-3 rounded-xl border ${
-                          c.isAudit
-                            ? 'bg-slate-50/60 dark:bg-slate-800/40 border-slate-200/60 dark:border-slate-800 text-slate-500'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 shadow-2xs'
-                        }`}
+                        className="flex gap-3 text-xs p-3 rounded-xl border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 shadow-2xs"
                       >
-                        <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[10px] flex items-center justify-center shrink-0">
+                        <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-bold text-[10px] flex items-center justify-center shrink-0">
                           {c.author?.charAt(0) || 'U'}
                         </div>
                         <div className="flex-1 min-w-0">
